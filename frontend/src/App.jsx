@@ -8,12 +8,13 @@ function App() {
   const [marketplace, setMarketplace] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // Form State
   const [productName, setProductName] = useState('');
   const [productPrice, setProductPrice] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  const [isBuying, setIsBuying] = useState(null); // Track the ID being bought
+  const [isBuying, setIsBuying] = useState(null);
 
   useEffect(() => {
     checkIfWalletIsConnected();
@@ -31,7 +32,6 @@ function App() {
           setLoading(false);
         }
       } else {
-        console.log("No ethereum object found");
         setLoading(false);
       }
     } catch (error) {
@@ -42,12 +42,17 @@ function App() {
 
   const connectWallet = async () => {
     try {
-      if (!window.ethereum) return alert("Please install MetaMask.");
+      setError('');
+      if (!window.ethereum) {
+        setError("MetaMask not detected. Please install the MetaMask extension to use BlockMart.");
+        return;
+      }
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       setAccount(accounts[0]);
       initContract();
     } catch (error) {
       console.error(error);
+      setError("Failed to connect wallet. Please try again.");
     }
   };
 
@@ -100,7 +105,6 @@ function App() {
       const tx = await marketplace.addProduct(productName, priceInWei);
       await tx.wait();
       
-      // Reset form and reload
       setProductName('');
       setProductPrice('');
       await loadProducts(marketplace);
@@ -132,89 +136,182 @@ function App() {
   return (
     <div className="app-container">
       <header>
-        <div className="logo">BlockMart</div>
-        {account ? (
-          <button className="btn btn-connect">
-            {account.slice(0, 6)}...{account.slice(-4)}
-          </button>
-        ) : (
-          <button className="btn btn-connect" onClick={connectWallet}>
-            Connect Wallet
-          </button>
-        )}
+        <div className="header-content">
+          <div className="logo-section">
+            <div className="logo">
+              <span className="logo-icon">B</span>
+              BlockMart
+            </div>
+            <div className="creator-badge">
+              <img 
+                src="https://github.com/SaurabhForge.png" 
+                alt="Saurabh Kumar" 
+                className="creator-avatar"
+                onError={(e) => {e.target.style.display='none'}}
+              />
+              <span>By Saurabh Kumar</span>
+            </div>
+          </div>
+          
+          <div className="header-actions">
+            {account ? (
+              <button className="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px'}}>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                {account.slice(0, 6)}...{account.slice(-4)}
+              </button>
+            ) : (
+              <button className="btn" onClick={connectWallet}>
+                Sign In / Connect
+              </button>
+            )}
+          </div>
+        </div>
       </header>
 
-      {account ? (
-        <main>
-          <div className="premium-panel">
-            <h2>Add New Product</h2>
-            <form onSubmit={addProduct} className="form-group">
-              <input 
-                type="text" 
-                placeholder="Product Name (e.g., Rare NFT Art)" 
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                disabled={isAdding}
-              />
-              <input 
-                type="number" 
-                step="0.001"
-                placeholder="Price in ETH" 
-                value={productPrice}
-                onChange={(e) => setProductPrice(e.target.value)}
-                disabled={isAdding}
-              />
-              <button type="submit" className="btn" disabled={isAdding || !productName || !productPrice}>
-                {isAdding ? "Listling..." : "List Product"}
-              </button>
-            </form>
+      {error && (
+        <div className="alert-error">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <div>
+            {error} <br/>
+            Don't have a wallet? <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Download MetaMask</a>
           </div>
-
-          <h2 className="catalog-title">Marketplace Catalog</h2>
-          {loading ? (
-            <div className="loader">Loading products...</div>
-          ) : (
-            <div className="grid">
-              {products.map((product) => (
-                <div key={product.id} className="product-card">
-                  <div className="product-name">{product.name}</div>
-                  <div className="product-price">{product.price} ETH</div>
-                  <div className="product-owner">
-                    Owner: {product.owner.slice(0, 6)}...{product.owner.slice(-4)}
-                  </div>
-                  
-                  {product.sold ? (
-                    <div className="sold-badge">Sold Out</div>
-                  ) : (
-                    <button 
-                      className="btn" 
-                      style={{ width: '100%' }}
-                      onClick={() => buyProduct(product.id, product.price.toString())}
-                      disabled={isBuying === product.id || product.owner.toLowerCase() === account.toLowerCase()}
-                    >
-                      {isBuying === product.id ? "Purchasing..." : "Buy Now"}
-                    </button>
-                  )}
-                </div>
-              ))}
-              {products.length === 0 && (
-                <p style={{ color: 'var(--text-secondary)' }}>No products listed yet. Be the first!</p>
-              )}
-            </div>
-          )}
-        </main>
-      ) : (
-        <div className="premium-panel" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-          <h2>Welcome to BlockMart</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-            A decentralized marketplace for buying and selling digital goods.
-            Connect your MetaMask wallet to get started.
-          </p>
-          <button className="btn" style={{ fontSize: '1.1rem', padding: '0.75rem 2rem' }} onClick={connectWallet}>
-            Connect MetaMask to Browse
-          </button>
         </div>
       )}
+
+      <main>
+        {!account && (
+          <div className="hero">
+            <h1>The New Standard in Digital Commerce</h1>
+            <p>Buy and sell premium digital assets securely on the blockchain. Connect your wallet to access the marketplace.</p>
+            <button className="btn" style={{ fontSize: '1.125rem', padding: '0.875rem 2rem' }} onClick={connectWallet}>
+              Connect Wallet to Explore
+            </button>
+          </div>
+        )}
+
+        {account && (
+          <>
+            <div className="seller-panel">
+              <div className="seller-panel-header">
+                <h2>List a New Item</h2>
+              </div>
+              <form onSubmit={addProduct} className="form-group">
+                <div className="input-wrapper">
+                  <label htmlFor="productName">Product Name</label>
+                  <input 
+                    id="productName"
+                    type="text" 
+                    placeholder="e.g. Vintage Typewriter" 
+                    value={productName}
+                    onChange={(e) => setProductName(e.target.value)}
+                    disabled={isAdding}
+                  />
+                </div>
+                <div className="input-wrapper">
+                  <label htmlFor="productPrice">Listing Price (ETH)</label>
+                  <input 
+                    id="productPrice"
+                    type="number" 
+                    step="0.001"
+                    placeholder="0.05" 
+                    value={productPrice}
+                    onChange={(e) => setProductPrice(e.target.value)}
+                    disabled={isAdding}
+                  />
+                </div>
+                <div className="input-wrapper" style={{ flex: '0 0 auto', alignSelf: 'flex-end' }}>
+                  <button type="submit" className="btn" disabled={isAdding || !productName || !productPrice}>
+                    {isAdding ? "Listing..." : "Post Item"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="section-header">
+              <h2 className="section-title">Fresh Listings</h2>
+            </div>
+
+            {loading ? (
+              <div className="loader">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spin">
+                  <line x1="12" y1="2" x2="12" y2="6"></line>
+                  <line x1="12" y1="18" x2="12" y2="22"></line>
+                  <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                  <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                  <line x1="2" y1="12" x2="6" y2="12"></line>
+                  <line x1="18" y1="12" x2="22" y2="12"></line>
+                  <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                  <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+                </svg>
+                Syncing with network...
+              </div>
+            ) : (
+              <div className="grid">
+                {products.map((product) => (
+                  <div key={product.id} className="product-card">
+                    <div className="product-image-placeholder">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                      </svg>
+                    </div>
+                    
+                    <div className="product-details">
+                      <div className="product-name">{product.name}</div>
+                      <div className="product-owner-tag">Seller: {product.owner.slice(0, 6)}...{product.owner.slice(-4)}</div>
+                      
+                      <div className="product-price-row">
+                        <span className="price-label">Price</span>
+                        <span className="product-price">{product.price} ETH</span>
+                      </div>
+                    </div>
+                    
+                    <div className="card-actions">
+                      {product.sold ? (
+                        <div className="sold-badge">Out of Stock</div>
+                      ) : (
+                        <button 
+                          className="btn" 
+                          style={{ width: '100%', padding: '0.75rem' }}
+                          onClick={() => buyProduct(product.id, product.price.toString())}
+                          disabled={isBuying === product.id || product.owner.toLowerCase() === account.toLowerCase()}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px'}}>
+                            <circle cx="9" cy="21" r="1"></circle>
+                            <circle cx="20" cy="21" r="1"></circle>
+                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                          </svg>
+                          {isBuying === product.id ? "Processing..." : "Add to Cart"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {products.length === 0 && (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)', background: 'white', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem' }}>
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <p>No inventory found. Be the first to list an item.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      <footer>
+        Created with ❤️ by <strong>Saurabh Kumar</strong> &copy; {new Date().getFullYear()} BlockMart
+      </footer>
     </div>
   );
 }
