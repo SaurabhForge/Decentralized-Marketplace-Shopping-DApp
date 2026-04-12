@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import contractAddress from './utils/contract-address.json';
 import MarketplaceArtifact from './utils/Marketplace.json';
+import heroBg from './assets/hero_bg.png';
+import premiumAsset from './assets/premium_asset.png';
 
 function App() {
   const [account, setAccount] = useState(null);
@@ -22,6 +24,9 @@ function App() {
 
   const checkIfWalletIsConnected = async () => {
     try {
+      // Give the browser extension a moment to inject window.ethereum
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       if (window.ethereum) {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts.length > 0) {
@@ -40,19 +45,48 @@ function App() {
     }
   };
 
+  const checkAndSwitchNetwork = async () => {
+    if (!window.ethereum) return;
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0x7a69' }], // Chain ID 31337 in hex
+      });
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: '0x7a69',
+                chainName: 'Hardhat Localhost',
+                rpcUrls: ['http://127.0.0.1:8545/'],
+                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+              },
+            ],
+          });
+        } catch (addError) {
+          console.error('Failed to add network', addError);
+        }
+      }
+    }
+  };
+
   const connectWallet = async () => {
     try {
       setError('');
       if (!window.ethereum) {
-        setError("MetaMask not detected. Please install the MetaMask extension to use BlockMart.");
+        setError("MetaMask not detected. Please install the MetaMask extension and heavily refresh the page.");
         return;
       }
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      await checkAndSwitchNetwork();
       setAccount(accounts[0]);
       initContract();
     } catch (error) {
       console.error(error);
-      setError("Failed to connect wallet. Please try again.");
+      setError("Failed to connect wallet. Please open the extension and try again.");
     }
   };
 
@@ -62,13 +96,15 @@ function App() {
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(
         contractAddress.Marketplace,
-        MarketplaceArtifact.abi,
+        MarketplaceArtifact,
         signer
       );
       setMarketplace(contract);
       await loadProducts(contract);
     } catch (error) {
       console.error("Error init contract", error);
+      setError("Failed to initialize contract. Ensure your wallet is connected to the Localhost network (Chain ID: 31337).");
+      setLoading(false);
     }
   };
 
@@ -76,8 +112,9 @@ function App() {
     try {
       setLoading(true);
       const productCount = await contract.getProductCount();
+      const count = Number(productCount);
       const items = [];
-      for (let i = 1; i <= productCount; i++) {
+      for (let i = 1; i <= count; i++) {
         const product = await contract.getProduct(i);
         items.push({
           id: Number(product.id),
@@ -90,6 +127,7 @@ function App() {
       setProducts(items);
     } catch (error) {
       console.error("Error loading products", error);
+      setError("Failed to load products from the network. Is your node running?");
     } finally {
       setLoading(false);
     }
@@ -187,10 +225,12 @@ function App() {
 
       <main>
         {!account && (
-          <div className="hero">
+          <div className="hero glass-panel">
+            <img src={heroBg} alt="Web3 background" className="hero-bg-img" />
+            <div className="hero-overlay"></div>
             <h1>The New Standard in Digital Commerce</h1>
             <p>Buy and sell premium digital assets securely on the blockchain. Connect your wallet to access the marketplace.</p>
-            <button className="btn" style={{ fontSize: '1.125rem', padding: '0.875rem 2rem' }} onClick={connectWallet}>
+            <button className="btn pulse-btn" onClick={connectWallet}>
               Connect Wallet to Explore
             </button>
           </div>
@@ -198,7 +238,7 @@ function App() {
 
         {account && (
           <>
-            <div className="seller-panel">
+            <div className="seller-panel glass-panel">
               <div className="seller-panel-header">
                 <h2>List a New Item</h2>
               </div>
@@ -256,12 +296,8 @@ function App() {
               <div className="grid">
                 {products.map((product) => (
                   <div key={product.id} className="product-card">
-                    <div className="product-image-placeholder">
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                        <polyline points="21 15 16 10 5 21"></polyline>
-                      </svg>
+                    <div className="product-image-container">
+                      <img src={premiumAsset} alt={product.name} className="product-image" />
                     </div>
                     
                     <div className="product-details">
@@ -296,7 +332,7 @@ function App() {
                   </div>
                 ))}
                 {products.length === 0 && (
-                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)', background: 'white', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
+                  <div className="glass-panel" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.2)' }}>
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem' }}>
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                     </svg>
