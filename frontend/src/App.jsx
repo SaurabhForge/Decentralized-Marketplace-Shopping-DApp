@@ -8,69 +8,13 @@ import featureNft from './assets/feature_nft.png';
 import featureKeyboard from './assets/feature_keyboard.png';
 import featureWatch from './assets/feature_watch.png';
 
-// Demo featured items — showcased items that make the marketplace look alive
-const FEATURED_ITEMS = [
-  {
-    id: 'demo-1',
-    name: 'Genesis NFT',
-    price: '0.85',
-    owner: '0xAbCd...1234',
-    sold: false,
-    image: featureNft,
-    category: 'Digital Art',
-    emoji: '🎨',
-    rating: '4.9',
-    isDemo: true,
-  },
-  {
-    id: 'demo-2',
-    name: 'Cyber Keyboard Pro',
-    price: '0.12',
-    owner: '0xDeF0...5678',
-    sold: false,
-    image: featureKeyboard,
-    category: 'Tech',
-    emoji: '⌨️',
-    rating: '4.7',
-    isDemo: true,
-  },
-  {
-    id: 'demo-3',
-    name: 'Quantum SmartWatch',
-    price: '0.45',
-    owner: '0x1234...ABCD',
-    sold: false,
-    image: featureWatch,
-    category: 'Wearables',
-    emoji: '⌚',
-    rating: '4.8',
-    isDemo: true,
-  },
-  {
-    id: 'demo-4',
-    name: 'Rare Pixel Dragon',
-    price: '1.20',
-    owner: '0x9876...EFAB',
-    sold: true,
-    image: featureNft,
-    category: 'Collectible',
-    emoji: '🐉',
-    rating: '5.0',
-    isDemo: true,
-  },
-  {
-    id: 'demo-5',
-    name: 'Sound Forge Headset',
-    price: '0.08',
-    owner: '0xFEDC...4321',
-    sold: false,
-    image: featureKeyboard,
-    category: 'Audio',
-    emoji: '🎧',
-    rating: '4.6',
-    isDemo: true,
-  },
-];
+// Helper to display varied images for products
+const getImageForProduct = (name) => {
+  if (name.includes('NFT') || name.includes('Dragon')) return featureNft;
+  if (name.includes('Keyboard') || name.includes('Headset')) return featureKeyboard;
+  if (name.includes('Watch')) return featureWatch;
+  return premiumAsset;
+};
 
 function App() {
   const [account, setAccount] = useState(null);
@@ -368,7 +312,7 @@ function App() {
                       <div key={product.id} className="product-card glass-panel">
                         <div className="product-image-container">
                           <div className="card-badge live-badge">🔴 Live</div>
-                          <img src={premiumAsset} alt={product.name} className="product-image" />
+                          <img src={getImageForProduct(product.name)} alt={product.name} className="product-image" />
                         </div>
                         <div className="product-details">
                           <div className="product-name">{product.name}</div>
@@ -402,52 +346,14 @@ function App() {
                   </div>
                 )}
 
-                {/* Featured / Demo Listings */}
-                <div className="section-header" style={{ marginTop: products.length > 0 ? '1rem' : '0' }}>
-                  <h2 className="section-title featured-title">⭐ Featured Listings</h2>
-                  <span className="demo-note">Showcasing premium items on BlockMart</span>
-                </div>
-
-                <div className="grid">
-                  {FEATURED_ITEMS.map((item) => (
-                    <div key={item.id} className="product-card glass-panel featured-card">
-                      <div className="product-image-container">
-                        <div className="card-badge featured-badge">✦ Featured</div>
-                        <div className="card-category">{item.emoji} {item.category}</div>
-                        <img src={item.image} alt={item.name} className="product-image" />
-                      </div>
-                      <div className="product-details">
-                        <div className="product-name">{item.name}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                          <div className="product-owner-tag" style={{ fontSize: '0.75rem' }}>Demo Listing</div>
-                          <div className="star-rating">{'★'.repeat(Math.floor(item.rating))} <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>({item.rating})</span></div>
-                        </div>
-                        <div className="product-price-row">
-                          <span className="price-label">Starting at</span>
-                          <span className="product-price featured-price">{item.price} ETH</span>
-                        </div>
-                      </div>
-                      <div className="card-actions">
-                        {item.sold ? (
-                          <div className="sold-badge">Out of Stock</div>
-                        ) : (
-                          <button
-                            className="btn btn-featured"
-                            style={{ width: '100%', padding: '0.75rem' }}
-                            onClick={() => alert('Connect and list your own item to start trading on BlockMart! 🚀')}
-                          >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px'}}>
-                              <circle cx="9" cy="21" r="1"></circle>
-                              <circle cx="20" cy="21" r="1"></circle>
-                              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-                            </svg>
-                            Add to Cart
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {/* Empty State when no products exist */}
+                {products.length === 0 && (
+                  <div className="empty-state glass-panel" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🛒</div>
+                    <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>No Items Yet</h3>
+                    <p style={{ color: 'var(--text-secondary)' }}>Be the first to list a product on BlockMart!</p>
+                  </div>
+                )}
               </>
             )}
           </>
