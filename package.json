@@ -7,17 +7,28 @@
     "test": "npx hardhat test",
     "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
     "deploy:sepolia": "npx hardhat run scripts/deploy.js --network sepolia",
+    "api:dev": "npm --prefix api run dev",
+    "api:start": "npm --prefix api start",
+    "api:deploy:gcp": "powershell -ExecutionPolicy Bypass -File scripts/deploy-gcp-api.ps1",
+    "frontend:deploy:gcp": "powershell -ExecutionPolicy Bypass -File scripts/deploy-gcp-frontend.ps1",
     "node": "npx hardhat node",
     "clean": "npx hardhat clean"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
-    "hardhat": "^2.22.17",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "chai": "^4.3.7",
-    "ethers": "^6.13.5"
+    "dotenv": "^17.4.2",
+    "ethers": "^6.13.5",
+    "hardhat": "^2.22.17"
   },
-  "keywords": ["blockchain", "ethereum", "marketplace", "dapp", "solidity"],
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "marketplace",
+    "dapp",
+    "solidity"
+  ],
   "author": "SaurabhForge",
   "license": "MIT"
 }

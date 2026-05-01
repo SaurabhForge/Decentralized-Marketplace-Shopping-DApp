@@ -1,91 +1,116 @@
-# Decentralized Marketplace (Shopping DApp)
+# Decentralized Marketplace Shopping DApp
 
-A full-stack Web3 application built with Solidity, Hardhat, React, and Vite. This application allows users to list products and purchase them using cryptocurrency (Ethereum). It features a modern, premium UI with a glassmorphism design and dark mode aesthetic.
+BlockMart is a full-stack Web3 marketplace built with Solidity, Hardhat, React, Vite, Firebase, and Google Cloud Run. Users can list digital products, buy available products with ETH, track marketplace activity through Google services, and connect the frontend to a deployable GCP API.
 
 ## Features
 
-- **Decentralized Backend**: Smart contracts written in Solidity and deployed to the blockchain.
-- **Wallet Integration**: Connect your Web3 wallet (e.g., MetaMask) to interact with the application.
-- **Product Management**: List new products with a name, image, and price, or purchase existing products.
-- **Beautiful UI**: Built with React and Vanilla CSS, featuring a responsive and dynamic design using glassmorphism styling.
+- Solidity marketplace contract with validated listings, exact-payment purchases, reentrancy protection, indexed events, and available-product reads.
+- React shopping interface with MetaMask wallet connection, responsive product cards, accessible form controls, and transaction status states.
+- Firebase integration for Google sign-in, Analytics events, Firestore listing snapshots, and Storage metadata uploads.
+- Google Cloud Run API with health/config endpoints, featured product data, secured CORS, Helmet headers, rate limiting, Joi request validation, and Firestore event persistence.
+- Automated deployment helper that prints the generated Cloud Run API URL and writes it to `frontend/.env.gcp`.
 
-## Prerequisites
+## Project Structure
 
-Before running the project locally, ensure you have the following installed:
-
-- Node.js (v16 or higher)
-- npm or yarn
-- MetaMask (browser extension) for interacting with the DApp locally
-
-## Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/SaurabhForge/Decentralized-Marketplace-Shopping-DApp.git
-   cd Decentralized-Marketplace-Shopping-DApp
-   ```
-
-2. **Install root dependencies (Hardhat & Backend):**
-   ```bash
-   npm install
-   ```
-
-3. **Install frontend dependencies:**
-   ```bash
-   cd frontend
-   npm install
-   cd ..
-   ```
-
-## Running on Localhost
-
-To run the application locally, you'll need to start the local blockchain network, deploy the contract, and spin up the frontend server.
-
-### 1. Start Local Hardhat Network
-
-In the root directory of the project, run:
-```bash
-npx hardhat node
+```text
+contracts/          Solidity smart contracts
+test/               Hardhat contract tests
+scripts/            Deploy scripts for blockchain and GCP API
+frontend/           React + Vite DApp
+api/                Express API ready for Google Cloud Run
+cloudbuild.yaml     Optional Cloud Build deployment pipeline
 ```
-This command will start a local Ethereum network on `http://127.0.0.1:8545` and provide you with a list of test accounts and their private keys.
 
-### 2. Deploy Smart Contract
+## Local Setup
 
-Open a **new terminal tab/window** in the root directory and deploy the `Marketplace` smart contract to your local network:
 ```bash
-npx hardhat run scripts/deploy.js --network localhost
+npm install
+cd frontend && npm install && cd ..
+cd api && npm install && cd ..
 ```
-*Note: The script automatically copies the smart contract ABI and deployment address to `frontend/src/utils/`, so you don't need to manually configure them.*
 
-### 3. Setup MetaMask
+Copy `.env.example` to `.env`, then fill in the values you need for Sepolia, Firebase, and GCP.
 
-1. Open your MetaMask extension.
-2. Go to Settings > Networks > Add a network manually.
-3. Configure a local network:
-   - **Network Name**: Localhost 8545
-   - **New RPC URL**: `http://127.0.0.1:8545`
-   - **Chain ID**: 31337
-   - **Currency Symbol**: ETH
-4. Import one of the test accounts by copying a private key from the terminal running the `npx hardhat node` command and pasting it into the MetaMask "Import Account" dialogue.
+## Run Locally
 
-### 4. Start the Frontend Development Server
+Start the local blockchain:
 
-Navigate to the `frontend` folder and start up Vite:
+```bash
+npm run node
+```
+
+Deploy and seed the contract in a second terminal:
+
+```bash
+npm run deploy:local
+```
+
+Start the GCP-compatible API locally:
+
+```bash
+npm run api:dev
+```
+
+Start the frontend:
+
 ```bash
 cd frontend
 npm run dev
 ```
-The application's interface will be accessible at `http://localhost:5173/` (or whichever port Vite assigns).
 
-Visit the URL in your browser, connect your MetaMask wallet (ensuring you are on the `Localhost 8545` network), and start browsing or listing products!
+Open the Vite URL, connect MetaMask to:
 
-## Technologies Used
+- RPC URL: `http://127.0.0.1:8545`
+- Chain ID: `31337`
+- Currency: `ETH`
 
-- [Solidity](https://soliditylang.org/)
-- [Hardhat](https://hardhat.org/)
-- [React](https://reactjs.org/)
-- [Vite](https://vitejs.dev/)
-- [Ethers.js](https://docs.ethers.org/v6/)
+## Generate The GCP API URL
+
+Make sure the Google Cloud SDK is authenticated and a project is selected:
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+```
+
+Deploy the API to Cloud Run:
+
+```powershell
+npm run api:deploy:gcp -- -Region us-central1 -FrontendOrigin https://YOUR_FRONTEND_DOMAIN
+```
+
+The script prints the real URL, for example:
+
+```text
+Generated GCP Cloud Run API URL: https://blockmart-marketplace-api-xxxxx-uc.a.run.app
+Frontend env value: VITE_GCP_API_URL=https://blockmart-marketplace-api-xxxxx-uc.a.run.app
+```
+
+It also creates `frontend/.env.gcp` with `VITE_GCP_API_URL` so the frontend can call the Cloud Run API.
+
+## Firebase Environment
+
+Add these values to `frontend/.env` or copy from `frontend/.env.example`:
+
+```text
+VITE_GCP_API_URL=https://blockmart-marketplace-api-xxxxx-uc.a.run.app
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
+VITE_FIREBASE_APP_ID=1:000000000000:web:0000000000000000000000
+VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
+```
+
+## Verification
+
+```bash
+npm test
+cd frontend && npm run lint && npm run build
+cd ../api && npm audit
+```
 
 ## License
-MIT License
+
+MIT

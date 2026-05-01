@@ -2,45 +2,57 @@
 pragma solidity ^0.8.24;
 
 contract Marketplace {
-    string public name;
-    uint public productCount = 0;
+    string public constant name = "Decentralized Marketplace";
+    uint256 public productCount;
+
+    bool private locked;
+
+    error EmptyProductName();
+    error InvalidProductPrice();
+    error ProductDoesNotExist(uint256 id);
+    error ProductAlreadySold(uint256 id);
+    error SellerCannotBuyOwnProduct();
+    error IncorrectPayment(uint256 expected, uint256 received);
+    error SellerPaymentFailed();
 
     struct Product {
-        uint id;
+        uint256 id;
         string name;
-        uint price;
+        uint256 price;
         address payable owner;
         bool sold;
     }
 
-    mapping(uint => Product) public products;
+    mapping(uint256 => Product) public products;
 
     event ProductListed(
-        uint id,
+        uint256 indexed id,
         string name,
-        uint price,
-        address owner,
+        uint256 price,
+        address indexed owner,
         bool sold
     );
 
     event ProductSold(
-        uint id,
+        uint256 indexed id,
         string name,
-        uint price,
-        address owner,
+        uint256 price,
+        address indexed owner,
         bool sold
     );
 
-    constructor() {
-        name = "Decentralized Marketplace";
+    modifier nonReentrant() {
+        require(!locked, "ReentrancyGuard: reentrant call");
+        locked = true;
+        _;
+        locked = false;
     }
 
-    // Function to add a product
-    function addProduct(string memory _name, uint _price) public {
-        require(bytes(_name).length > 0, "Product name cannot be empty");
-        require(_price > 0, "Product price must be greater than zero");
+    function addProduct(string calldata _name, uint256 _price) external {
+        if (bytes(_name).length == 0) revert EmptyProductName();
+        if (_price == 0) revert InvalidProductPrice();
 
-        productCount ++;
+        productCount++;
 
         products[productCount] = Product(
             productCount,
@@ -59,43 +71,65 @@ contract Marketplace {
         );
     }
 
-    // Function to buy a product
-    function buyProduct(uint _id) public payable {
-        Product memory _product = products[_id];
-        address payable _seller = _product.owner;
+    function buyProduct(uint256 _id) external payable nonReentrant {
+        Product storage product = products[_id];
 
-        require(_product.id > 0 && _product.id <= productCount, "Product does not exist");
-        require(msg.value >= _product.price, "Not enough Ether to cover item price");
-        require(!_product.sold, "Product already sold");
-        require(_seller != msg.sender, "Seller cannot buy their own product");
+        if (product.id == 0 || product.id > productCount) {
+            revert ProductDoesNotExist(_id);
+        }
+        if (product.sold) revert ProductAlreadySold(_id);
+        if (product.owner == msg.sender) revert SellerCannotBuyOwnProduct();
+        if (msg.value != product.price) {
+            revert IncorrectPayment(product.price, msg.value);
+        }
 
-        // Transfer ownership to the buyer
-        _product.owner = payable(msg.sender);
-        _product.sold = true;
+        address payable seller = product.owner;
 
-        // Update the product mapping
-        products[_id] = _product;
+        product.owner = payable(msg.sender);
+        product.sold = true;
 
-        // Pay the seller
-        _seller.transfer(msg.value);
+        (bool success, ) = seller.call{value: msg.value}("");
+        if (!success) revert SellerPaymentFailed();
 
-        // Emit sale event
         emit ProductSold(
-            productCount,
-            _product.name,
-            _product.price,
+            _id,
+            product.name,
+            product.price,
             msg.sender,
             true
         );
     }
 
-    // Function to get product count
-    function getProductCount() public view returns (uint) {
+    function getProductCount() external view returns (uint256) {
         return productCount;
     }
 
-    // Function to get a product by ID
-    function getProduct(uint _id) public view returns (Product memory) {
+    function getProduct(uint256 _id) external view returns (Product memory) {
+        if (products[_id].id == 0 || _id > productCount) {
+            revert ProductDoesNotExist(_id);
+        }
         return products[_id];
+    }
+
+    function getAvailableProducts() external view returns (Product[] memory) {
+        uint256 availableCount;
+
+        for (uint256 i = 1; i <= productCount; i++) {
+            if (!products[i].sold) {
+                availableCount++;
+            }
+        }
+
+        Product[] memory availableProducts = new Product[](availableCount);
+        uint256 index;
+
+        for (uint256 i = 1; i <= productCount; i++) {
+            if (!products[i].sold) {
+                availableProducts[index] = products[i];
+                index++;
+            }
+        }
+
+        return availableProducts;
     }
 }
