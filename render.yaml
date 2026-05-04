@@ -19,7 +19,6 @@ services:
   - type: web
     name: blockmart-marketplace-frontend-saurabhforge
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
