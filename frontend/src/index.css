@@ -235,6 +235,7 @@ main {
 .hero-copy,
 .market-summary,
 .seller-panel,
+.receipt-panel,
 .catalog-section,
 .alert-error,
 .empty-state {
@@ -362,6 +363,75 @@ main {
   max-width: 680px;
   margin: 0;
   color: var(--muted);
+}
+
+.receipt-panel {
+  margin-bottom: 24px;
+  padding: 24px;
+}
+
+.section-header.compact {
+  margin-bottom: 14px;
+}
+
+.receipt-list {
+  display: grid;
+  gap: 10px;
+}
+
+.receipt-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 14px 16px;
+}
+
+.receipt-item div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.receipt-item strong,
+.receipt-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-item strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.receipt-item span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.receipt-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark) !important;
+  padding: 7px 10px;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+}
+
+.receipt-status.syncing {
+  background: var(--blue-soft);
+  color: #1849a9 !important;
+}
+
+.receipt-status.local {
+  background: #fff7ed;
+  color: #9a3412 !important;
 }
 
 .listing-form {
@@ -644,6 +714,7 @@ footer {
 
   .hero-copy,
   .seller-panel,
+  .receipt-panel,
   .catalog-section {
     padding: 18px;
   }

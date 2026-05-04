@@ -14,7 +14,15 @@ const requestJson = async (path, options = {}) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Cloud API request failed with ${response.status}`);
+    let message = `Cloud API request failed with ${response.status}`;
+    try {
+      const payload = await response.json();
+      message = payload?.error || message;
+    } catch {
+      // Keep the HTTP status message when the API response is not JSON.
+    }
+
+    throw new Error(message);
   }
 
   return response.json();

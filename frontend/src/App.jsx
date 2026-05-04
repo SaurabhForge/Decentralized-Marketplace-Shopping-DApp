@@ -88,6 +88,10 @@ const persistSignedOrders = (orders) => {
     window.localStorage.setItem(signedOrdersStorageKey, JSON.stringify(orders));
   }
 };
+const sameHostedOrder = (left, right) => (
+  left.productId === right.productId
+  && left.account?.toLowerCase?.() === right.account?.toLowerCase?.()
+);
 
 const productImages = {
   art: 'https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=900&q=80',
@@ -123,6 +127,12 @@ const getProductMeta = (name) => {
 const shortAddress = (value) => {
   if (!value || !value.startsWith('0x')) return value || 'Unknown seller';
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+};
+
+const getOrderStatusLabel = (order) => {
+  if (order.syncStatus === 'syncing') return 'Saving receipt';
+  if (order.syncStatus === 'local') return 'Saved locally';
+  return 'Receipt saved';
 };
 
 const normalizeCategory = (category) => {
@@ -180,6 +190,10 @@ function App() {
     return matchesCategory && matchesSearch;
   }), [searchTerm, selectedCategory, storefrontProducts]);
 
+  const walletOrders = useMemo(() => signedOrders
+    .filter((order) => order.account?.toLowerCase?.() === account?.toLowerCase?.())
+    .slice(0, 4), [account, signedOrders]);
+
   const activeCount = storefrontProducts.filter((product) => !product.sold).length;
   const totalValue = storefrontProducts
     .filter((product) => !product.sold)
@@ -207,17 +221,33 @@ function App() {
       const remoteOrders = result?.orders || [];
       if (!remoteOrders.length) return;
 
-      const knownOrderIds = new Set(signedOrders.map((order) => order.id));
-      const nextOrders = [
-        ...remoteOrders.filter((order) => !knownOrderIds.has(order.id)),
-        ...signedOrders,
-      ].slice(0, 50);
+      setSignedOrders((currentOrders) => {
+        const knownOrderIds = new Set(currentOrders.map((order) => order.id));
+        const nextOrders = [
+          ...remoteOrders
+            .filter((order) => !knownOrderIds.has(order.id))
+            .map((order) => ({ ...order, syncStatus: 'saved' })),
+          ...currentOrders,
+        ].slice(0, 50);
 
-      setSignedOrders(nextOrders);
-      persistSignedOrders(nextOrders);
+        persistSignedOrders(nextOrders);
+        return nextOrders;
+      });
     } catch (error) {
       console.warn('Unable to load hosted checkout orders', error);
     }
+  };
+
+  const upsertHostedOrder = (order) => {
+    setSignedOrders((currentOrders) => {
+      const nextOrders = [
+        order,
+        ...currentOrders.filter((item) => !sameHostedOrder(item, order)),
+      ].slice(0, 50);
+
+      persistSignedOrders(nextOrders);
+      return nextOrders;
+    });
   };
 
   const checkIfWalletIsConnected = async () => {
@@ -603,11 +633,11 @@ function App() {
         message,
         signature,
       };
-      const result = await createHostedOrder(orderPayload);
-      const confirmedOrder = result?.order || {
+      const pendingOrder = {
         id: `${buyer.toLowerCase()}_${product.id}`,
         productId: product.id,
         productName: product.name,
+        category: product.category,
         priceEth: product.price,
         account: buyer.toLowerCase(),
         buyer,
@@ -615,15 +645,50 @@ function App() {
         createdAt: timestamp,
         confirmedAt: timestamp,
         status: 'purchased',
+        syncStatus: 'syncing',
       };
-      const nextOrders = [
-        confirmedOrder,
-        ...signedOrders.filter((item) => item.productId !== product.id),
-      ].slice(0, 20);
 
-      setSignedOrders(nextOrders);
-      persistSignedOrders(nextOrders);
-      setNotice(`Checkout approved for ${product.name}.`);
+      upsertHostedOrder(pendingOrder);
+      setNotice(`Wallet approved ${product.name}. Saving your receipt now.`);
+
+      try {
+        const result = await createHostedOrder(orderPayload);
+        const confirmedOrder = {
+          ...pendingOrder,
+          ...(result?.order || {}),
+          syncStatus: result?.order ? 'saved' : 'local',
+        };
+
+        upsertHostedOrder(confirmedOrder);
+        setNotice(
+          result?.order
+            ? `Purchase confirmed for ${product.name}. Your receipt is saved.`
+            : `Purchase approved for ${product.name}. Receipt saved on this browser.`,
+        );
+
+        await Promise.allSettled([
+          publishAnalyticsEvent({
+            type: 'hosted_order_signed',
+            account: buyer,
+            productId: product.id,
+            priceEth: product.price,
+            message,
+            signature,
+          }),
+          trackMarketplaceEvent('hosted_order_signed', {
+            product_id: product.id,
+            price_eth: product.price,
+          }),
+        ]);
+      } catch (syncError) {
+        console.warn('Checkout approved but cloud order sync failed', syncError);
+        upsertHostedOrder({
+          ...pendingOrder,
+          syncStatus: 'local',
+          syncError: syncError.message,
+        });
+        setNotice(`Purchase approved for ${product.name}. Receipt saved locally; cloud sync can retry later.`);
+      }
     } catch (error) {
       console.error('Error signing hosted order', error);
       setError('The checkout was not confirmed. Check MetaMask and try again.');
@@ -811,6 +876,30 @@ function App() {
                 Product checkout uses MetaMask approval, so it works without deploying a new Sepolia contract or
                 needing test ETH. Select a product below and approve the wallet request.
               </p>
+            </div>
+          </section>
+        )}
+
+        {account && !shouldUseOnChain && walletOrders.length > 0 && (
+          <section className="receipt-panel" aria-label="Purchase receipts">
+            <div className="section-header compact">
+              <div>
+                <span className="eyebrow">After wallet approval</span>
+                <h2>Purchase receipts</h2>
+              </div>
+            </div>
+            <div className="receipt-list">
+              {walletOrders.map((order) => (
+                <article className="receipt-item" key={order.id || `${order.account}-${order.productId}`}>
+                  <div>
+                    <strong>{order.productName || order.productId}</strong>
+                    <span>{shortAddress(order.buyer || order.account)} - {order.priceEth} ETH</span>
+                  </div>
+                  <span className={`receipt-status ${order.syncStatus || 'saved'}`}>
+                    {getOrderStatusLabel(order)}
+                  </span>
+                </article>
+              ))}
             </div>
           </section>
         )}
