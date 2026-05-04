@@ -354,18 +354,11 @@ main {
   letter-spacing: 0;
 }
 
-.activation-panel {
+.checkout-panel {
   align-items: center;
 }
 
-.activation-copy {
-  display: flex;
-  gap: 18px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.activation-copy p {
+.checkout-copy p {
   max-width: 680px;
   margin: 0;
   color: var(--muted);
@@ -625,14 +618,8 @@ footer {
 
   .hero,
   .seller-panel,
-  .listing-form,
-  .activation-copy {
+  .listing-form {
     grid-template-columns: 1fr;
-  }
-
-  .activation-copy {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .hero-copy {

@@ -40,7 +40,6 @@ const catalogFallback = [
 
 const categoryOptions = ['All', 'Collectibles', 'Electronics', 'Wearables'];
 const marketplaceAbi = Array.isArray(MarketplaceArtifact) ? MarketplaceArtifact : MarketplaceArtifact.abi;
-const marketplaceBytecode = Array.isArray(MarketplaceArtifact) ? '' : MarketplaceArtifact.bytecode;
 const localContractAddress = contractAddress.Marketplace;
 const defaultChainId = import.meta.env.PROD ? '0xaa36a7' : '0x7a69';
 const defaultChainName = import.meta.env.PROD ? 'Sepolia' : 'Hardhat Localhost';
@@ -60,11 +59,6 @@ const signedOrdersStorageKey = `blockmart-signed-orders-${walletNetwork.chainId}
 const getStoredContractAddress = () => {
   if (typeof window === 'undefined') return '';
   return window.localStorage.getItem(contractStorageKey) || '';
-};
-const persistContractAddress = (address) => {
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(contractStorageKey, address);
-  }
 };
 const clearStoredContractAddress = () => {
   if (typeof window !== 'undefined') {
@@ -147,7 +141,6 @@ function App() {
   const [productPrice, setProductPrice] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isBuying, setIsBuying] = useState(null);
-  const [isDeployingContract, setIsDeployingContract] = useState(false);
   const [activeContractAddress, setActiveContractAddress] = useState(getInitialContractAddress);
   const [signedOrders, setSignedOrders] = useState(getStoredSignedOrders);
   const [searchTerm, setSearchTerm] = useState('');
@@ -291,7 +284,7 @@ function App() {
       if (shouldUseOnChain) {
         initContract(activeContractAddress);
       } else {
-        setNotice('Wallet connected. You can sign hosted orders now or activate an on-chain contract.');
+        setNotice('Wallet connected. Choose a product and sign the hosted order in MetaMask.');
         setLoading(false);
       }
     } catch (error) {
@@ -346,62 +339,6 @@ function App() {
     setError('');
     setNotice('Hosted catalog mode restored. Connected wallets can sign hosted orders.');
     setLoading(false);
-  };
-
-  const activateOnChainMarketplace = async () => {
-    try {
-      setError('');
-      setNotice('');
-
-      if (!window.ethereum) {
-        setError('MetaMask is not available in this browser. Install it to activate on-chain marketplace features.');
-        return;
-      }
-
-      if (!marketplaceBytecode) {
-        setError('The frontend is missing the compiled contract bytecode. Rebuild the project and deploy again.');
-        return;
-      }
-
-      setIsDeployingContract(true);
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setAccount(accounts[0]);
-
-      const networkReady = await checkAndSwitchNetwork();
-      if (!networkReady) return;
-
-      setNotice('Confirm the Marketplace contract deployment in MetaMask.');
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const factory = new ethers.ContractFactory(marketplaceAbi, marketplaceBytecode, signer);
-      const contract = await factory.deploy();
-      const deploymentTransaction = contract.deploymentTransaction();
-
-      setNotice('Waiting for the contract deployment to be confirmed on-chain.');
-      const deployedContract = await contract.waitForDeployment();
-      const deployedAddress = await deployedContract.getAddress();
-
-      persistContractAddress(deployedAddress);
-      setActiveContractAddress(deployedAddress);
-      setMarketplace(deployedContract);
-      await loadProducts(deployedContract);
-      setNotice(`On-chain marketplace activated at ${shortAddress(deployedAddress)}.`);
-
-      await publishAnalyticsEvent({
-        type: 'contract_deployed',
-        account: accounts[0],
-        contractAddress: deployedAddress,
-        transactionHash: deploymentTransaction?.hash,
-      }).catch((error) => {
-        console.warn('Accepted deployment even though analytics failed', error);
-      });
-    } catch (error) {
-      console.error('Error deploying contract', error);
-      setError('Contract deployment was not completed. Check MetaMask, Sepolia test ETH, and network selection.');
-    } finally {
-      setIsDeployingContract(false);
-      setLoading(false);
-    }
   };
 
   const loadProducts = async (contract) => {
@@ -625,7 +562,6 @@ function App() {
               disabled={
                 isBuying === product.id
                 || isOwner
-                || isDeployingContract
                 || isSigned
               }
               aria-label={`${isOnChain ? 'Buy' : account ? 'Wallet connected for' : 'Connect wallet for'} ${product.name}`}
@@ -722,7 +658,7 @@ function App() {
             </div>
             <div>
               <span>{shouldUseOnChain ? 'Contract' : 'Mode'}</span>
-              <strong>{shouldUseOnChain ? shortAddress(activeContractAddress) : 'Hosted catalog'}</strong>
+              <strong>{shouldUseOnChain ? shortAddress(activeContractAddress) : account ? 'Wallet checkout' : 'Hosted catalog'}</strong>
             </div>
           </div>
         </section>
@@ -749,24 +685,16 @@ function App() {
         )}
 
         {account && !shouldUseOnChain && (
-          <section className="seller-panel activation-panel">
+          <section className="seller-panel checkout-panel">
             <div>
-              <span className="eyebrow">Wallet setup</span>
-              <h2>Activate on-chain marketplace</h2>
+              <span className="eyebrow">Wallet checkout</span>
+              <h2>Ready to sign orders</h2>
             </div>
-            <div className="activation-copy">
+            <div className="checkout-copy">
               <p>
-                Deploy the Marketplace contract from MetaMask on {walletNetwork.chainName}. After confirmation,
-                listing and buying actions will use your connected wallet.
+                Product checkout uses MetaMask signatures, so it works without deploying a new Sepolia contract or
+                needing test ETH. Select a product below and approve the signature request.
               </p>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={activateOnChainMarketplace}
-                disabled={isDeployingContract}
-              >
-                {isDeployingContract ? 'Deploying contract' : 'Activate contract'}
-              </button>
             </div>
           </section>
         )}
