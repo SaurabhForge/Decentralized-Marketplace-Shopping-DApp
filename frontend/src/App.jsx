@@ -47,10 +47,11 @@ const catalogFallback = [
 
 const categoryOptions = ['All', 'Collectibles', 'Electronics', 'Wearables'];
 const marketplaceAbi = Array.isArray(MarketplaceArtifact) ? MarketplaceArtifact : MarketplaceArtifact.abi;
-const localContractAddress = contractAddress.Marketplace;
-const defaultChainId = import.meta.env.PROD ? '0xaa36a7' : '0x7a69';
-const defaultChainName = import.meta.env.PROD ? 'Sepolia' : 'Hardhat Localhost';
-const defaultRpcUrl = import.meta.env.PROD ? 'https://rpc.sepolia.org' : 'http://127.0.0.1:8545/';
+const isLocalContractMode = import.meta.env.VITE_USE_LOCAL_CONTRACT === 'true';
+const localContractAddress = isLocalContractMode ? contractAddress.Marketplace : '';
+const defaultChainId = isLocalContractMode ? '0x7a69' : '0xaa36a7';
+const defaultChainName = isLocalContractMode ? 'Hardhat Localhost' : 'Sepolia';
+const defaultRpcUrl = isLocalContractMode ? 'http://127.0.0.1:8545/' : 'https://rpc.sepolia.org';
 const walletNetwork = {
   chainId: import.meta.env.VITE_CHAIN_ID_HEX || defaultChainId,
   chainName: import.meta.env.VITE_CHAIN_NAME || defaultChainName,
@@ -61,6 +62,7 @@ const walletNetwork = {
     decimals: 18,
   },
 };
+const shouldSyncWalletNetwork = !isLocalContractMode;
 const contractStorageKey = `blockmart-marketplace-contract-${walletNetwork.chainId}`;
 const signedOrdersStorageKey = `blockmart-signed-orders-${walletNetwork.chainId}`;
 const clearStoredContractAddress = () => {
@@ -222,23 +224,22 @@ function App() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
+      if (!shouldUseOnChain) {
+        setLoading(false);
+        return;
+      }
+
       if (window.ethereum) {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts.length > 0) {
-          if (shouldUseOnChain) {
-            const networkReady = await checkAndSwitchNetwork();
-            if (!networkReady) {
-              setLoading(false);
-              return;
-            }
-          }
-          setAccount(accounts[0]);
-          if (shouldUseOnChain) {
-            initContract(activeContractAddress);
-          } else {
-            await hydrateHostedOrders(accounts[0]);
+          const networkReady = await checkAndSwitchNetwork();
+          if (!networkReady) {
             setLoading(false);
+            return;
           }
+
+          setAccount(accounts[0]);
+          initContract(activeContractAddress);
         } else {
           setLoading(false);
         }
@@ -287,6 +288,42 @@ function App() {
     return false;
   };
 
+  const ensureHostedWalletNetwork = async () => {
+    if (!shouldSyncWalletNetwork || !window.ethereum) return true;
+
+    try {
+      setNotice(`Switching MetaMask to ${walletNetwork.chainName}.`);
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: walletNetwork.chainId }],
+      });
+      return true;
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: walletNetwork.chainId,
+                chainName: walletNetwork.chainName,
+                rpcUrls: walletNetwork.rpcUrls,
+                nativeCurrency: walletNetwork.nativeCurrency,
+              },
+            ],
+          });
+          return true;
+        } catch (addError) {
+          console.error('Unable to add hosted wallet network', addError);
+        }
+      }
+
+      console.error('Unable to switch hosted wallet network', switchError);
+      setError(`Switch MetaMask to ${walletNetwork.chainName}, then try Buy again.`);
+      return false;
+    }
+  };
+
   const connectWallet = async () => {
     try {
       setError('');
@@ -295,14 +332,21 @@ function App() {
         return;
       }
 
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       if (shouldUseOnChain) {
         const networkReady = await checkAndSwitchNetwork();
         if (!networkReady) {
           setLoading(false);
           return;
         }
+      } else {
+        const networkReady = await ensureHostedWalletNetwork();
+        if (!networkReady) {
+          setLoading(false);
+          return;
+        }
       }
+
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       setAccount(accounts[0]);
       if (shouldUseOnChain) {
         initContract(activeContractAddress);
@@ -527,6 +571,12 @@ function App() {
       }
 
       setIsBuying(product.id);
+      const networkReady = await ensureHostedWalletNetwork();
+      if (!networkReady) {
+        setIsBuying(null);
+        return;
+      }
+
       const accounts = account
         ? [account]
         : await window.ethereum.request({ method: 'eth_requestAccounts' });

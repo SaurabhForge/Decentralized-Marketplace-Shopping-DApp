@@ -58,7 +58,15 @@ cd frontend
 npm run dev
 ```
 
-Open the Vite URL, connect MetaMask to:
+By default the frontend runs in hosted catalog mode and wallet checkout uses Sepolia. This avoids MetaMask trying to reach a local Hardhat RPC when no blockchain node is running.
+
+To test the local Solidity contract, add this to `frontend/.env.local` before starting Vite:
+
+```text
+VITE_USE_LOCAL_CONTRACT=true
+```
+
+Then open the Vite URL and connect MetaMask to:
 
 - RPC URL: `http://127.0.0.1:8545`
 - Chain ID: `31337`
