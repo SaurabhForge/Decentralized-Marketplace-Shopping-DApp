@@ -39,20 +39,36 @@ const catalogFallback = [
 ];
 
 const categoryOptions = ['All', 'Collectibles', 'Electronics', 'Wearables'];
+const marketplaceAbi = Array.isArray(MarketplaceArtifact) ? MarketplaceArtifact : MarketplaceArtifact.abi;
+const marketplaceBytecode = Array.isArray(MarketplaceArtifact) ? '' : MarketplaceArtifact.bytecode;
 const localContractAddress = contractAddress.Marketplace;
-const configuredContractAddress = import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS || (!import.meta.env.PROD ? localContractAddress : '');
+const defaultChainId = import.meta.env.PROD ? '0xaa36a7' : '0x7a69';
+const defaultChainName = import.meta.env.PROD ? 'Sepolia' : 'Hardhat Localhost';
+const defaultRpcUrl = import.meta.env.PROD ? 'https://rpc.sepolia.org' : 'http://127.0.0.1:8545/';
 const walletNetwork = {
-  chainId: import.meta.env.VITE_CHAIN_ID_HEX || '0x7a69',
-  chainName: import.meta.env.VITE_CHAIN_NAME || 'Hardhat Localhost',
-  rpcUrls: [import.meta.env.VITE_RPC_URL || 'http://127.0.0.1:8545/'],
+  chainId: import.meta.env.VITE_CHAIN_ID_HEX || defaultChainId,
+  chainName: import.meta.env.VITE_CHAIN_NAME || defaultChainName,
+  rpcUrls: [import.meta.env.VITE_RPC_URL || defaultRpcUrl],
   nativeCurrency: {
     name: import.meta.env.VITE_NATIVE_CURRENCY_NAME || 'ETH',
     symbol: import.meta.env.VITE_NATIVE_CURRENCY_SYMBOL || 'ETH',
     decimals: 18,
   },
 };
-const hasPublicContract = Boolean(import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS);
-const shouldUseOnChain = !import.meta.env.PROD || hasPublicContract;
+const contractStorageKey = `blockmart-marketplace-contract-${walletNetwork.chainId}`;
+const getStoredContractAddress = () => {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(contractStorageKey) || '';
+};
+const persistContractAddress = (address) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(contractStorageKey, address);
+  }
+};
+const getInitialContractAddress = () => (
+  import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS
+  || (!import.meta.env.PROD ? localContractAddress : getStoredContractAddress())
+);
 
 const productImages = {
   art: 'https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=900&q=80',
@@ -103,6 +119,7 @@ function App() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [googleUser, setGoogleUser] = useState(null);
   const [cloudApiReady, setCloudApiReady] = useState(false);
   const [featuredProducts, setFeaturedProducts] = useState([]);
@@ -110,8 +127,11 @@ function App() {
   const [productPrice, setProductPrice] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isBuying, setIsBuying] = useState(null);
+  const [isDeployingContract, setIsDeployingContract] = useState(false);
+  const [activeContractAddress, setActiveContractAddress] = useState(getInitialContractAddress);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const shouldUseOnChain = Boolean(activeContractAddress);
 
   useEffect(() => {
     checkIfWalletIsConnected();
@@ -131,7 +151,7 @@ function App() {
       : catalogFallback;
 
     return shouldUseOnChain && products.length > 0 ? products : cloudProducts;
-  }, [featuredProducts, products]);
+  }, [featuredProducts, products, shouldUseOnChain]);
 
   const visibleProducts = useMemo(() => storefrontProducts.filter((product) => {
     const meta = getProductMeta(product.name);
@@ -170,11 +190,15 @@ function App() {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts.length > 0) {
           if (shouldUseOnChain) {
-            await checkAndSwitchNetwork();
+            const networkReady = await checkAndSwitchNetwork();
+            if (!networkReady) {
+              setLoading(false);
+              return;
+            }
           }
           setAccount(accounts[0]);
           if (shouldUseOnChain) {
-            initContract();
+            initContract(activeContractAddress);
           } else {
             setLoading(false);
           }
@@ -191,13 +215,14 @@ function App() {
   };
 
   const checkAndSwitchNetwork = async () => {
-    if (!window.ethereum) return;
+    if (!window.ethereum) return false;
 
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: walletNetwork.chainId }],
       });
+      return true;
     } catch (switchError) {
       if (switchError.code === 4902) {
         try {
@@ -212,11 +237,17 @@ function App() {
               },
             ],
           });
+          return true;
         } catch (addError) {
           console.error('Failed to add network', addError);
+          setError(`MetaMask could not add ${walletNetwork.chainName}. Add it manually and try again.`);
         }
+      } else {
+        setError(`Switch MetaMask to ${walletNetwork.chainName} to use wallet actions.`);
       }
     }
+
+    return false;
   };
 
   const connectWallet = async () => {
@@ -229,11 +260,15 @@ function App() {
 
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       if (shouldUseOnChain) {
-        await checkAndSwitchNetwork();
+        const networkReady = await checkAndSwitchNetwork();
+        if (!networkReady) {
+          setLoading(false);
+          return;
+        }
       }
       setAccount(accounts[0]);
       if (shouldUseOnChain) {
-        initContract();
+        initContract(activeContractAddress);
       } else {
         setLoading(false);
       }
@@ -257,13 +292,18 @@ function App() {
     }
   };
 
-  const initContract = async () => {
+  const initContract = async (contractAddressToUse = activeContractAddress) => {
     try {
+      if (!contractAddressToUse) {
+        setLoading(false);
+        return;
+      }
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(
-        configuredContractAddress,
-        MarketplaceArtifact,
+        contractAddressToUse,
+        marketplaceAbi,
         signer,
       );
 
@@ -272,6 +312,58 @@ function App() {
     } catch (error) {
       console.error('Error init contract', error);
       setError('The configured blockchain contract is not reachable. You can still browse the hosted catalog.');
+      setLoading(false);
+    }
+  };
+
+  const activateOnChainMarketplace = async () => {
+    try {
+      setError('');
+      setNotice('');
+
+      if (!window.ethereum) {
+        setError('MetaMask is not available in this browser. Install it to activate on-chain marketplace features.');
+        return;
+      }
+
+      if (!marketplaceBytecode) {
+        setError('The frontend is missing the compiled contract bytecode. Rebuild the project and deploy again.');
+        return;
+      }
+
+      setIsDeployingContract(true);
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      setAccount(accounts[0]);
+
+      const networkReady = await checkAndSwitchNetwork();
+      if (!networkReady) return;
+
+      setNotice('Confirm the Marketplace contract deployment in MetaMask.');
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const factory = new ethers.ContractFactory(marketplaceAbi, marketplaceBytecode, signer);
+      const contract = await factory.deploy();
+
+      setNotice('Waiting for the contract deployment to be confirmed on-chain.');
+      const deployedContract = await contract.waitForDeployment();
+      const deployedAddress = await deployedContract.getAddress();
+
+      persistContractAddress(deployedAddress);
+      setActiveContractAddress(deployedAddress);
+      setMarketplace(deployedContract);
+      await loadProducts(deployedContract);
+      setNotice(`On-chain marketplace activated at ${shortAddress(deployedAddress)}.`);
+
+      await publishAnalyticsEvent({
+        type: 'contract_deployed',
+        account: accounts[0],
+        contractAddress: deployedAddress,
+      });
+    } catch (error) {
+      console.error('Error deploying contract', error);
+      setError('Contract deployment was not completed. Check MetaMask, Sepolia test ETH, and network selection.');
+    } finally {
+      setIsDeployingContract(false);
       setLoading(false);
     }
   };
@@ -422,11 +514,32 @@ function App() {
           ) : (
             <button
               className="btn btn-primary"
-              onClick={() => (isOnChain ? buyProduct(product.id, product.price.toString()) : connectWallet())}
-              disabled={isBuying === product.id || isOwner || (!isOnChain && Boolean(account))}
+              onClick={() => {
+                if (isOnChain) {
+                  buyProduct(product.id, product.price.toString());
+                } else if (account && !shouldUseOnChain) {
+                  activateOnChainMarketplace();
+                } else {
+                  connectWallet();
+                }
+              }}
+              disabled={
+                isBuying === product.id
+                || isOwner
+                || isDeployingContract
+                || (!isOnChain && shouldUseOnChain && Boolean(account))
+              }
               aria-label={`${isOnChain ? 'Buy' : account ? 'Wallet connected for' : 'Connect wallet for'} ${product.name}`}
             >
-              {isBuying === product.id ? 'Processing' : isOnChain ? 'Buy' : account ? 'Wallet ready' : 'Connect'}
+              {isBuying === product.id
+                ? 'Processing'
+                : isOnChain
+                  ? 'Buy'
+                  : account && !shouldUseOnChain
+                    ? 'Activate'
+                    : account
+                      ? 'Wallet ready'
+                      : 'Connect'}
             </button>
           )}
         </div>
@@ -510,10 +623,17 @@ function App() {
             </div>
             <div>
               <span>{shouldUseOnChain ? 'Contract' : 'Mode'}</span>
-              <strong>{shouldUseOnChain ? shortAddress(configuredContractAddress) : 'Hosted catalog'}</strong>
+              <strong>{shouldUseOnChain ? shortAddress(activeContractAddress) : 'Hosted catalog'}</strong>
             </div>
           </div>
         </section>
+
+        {notice && (
+          <div className="alert-info" role="status">
+            <strong>Wallet status</strong>
+            <span>{notice}</span>
+          </div>
+        )}
 
         {error && (
           <div className="alert-error" role="alert">
@@ -521,6 +641,29 @@ function App() {
             <span>{error}</span>
             <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Get MetaMask</a>
           </div>
+        )}
+
+        {account && !shouldUseOnChain && (
+          <section className="seller-panel activation-panel">
+            <div>
+              <span className="eyebrow">Wallet setup</span>
+              <h2>Activate on-chain marketplace</h2>
+            </div>
+            <div className="activation-copy">
+              <p>
+                Deploy the Marketplace contract from MetaMask on {walletNetwork.chainName}. After confirmation,
+                listing and buying actions will use your connected wallet.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={activateOnChainMarketplace}
+                disabled={isDeployingContract}
+              >
+                {isDeployingContract ? 'Deploying contract' : 'Activate contract'}
+              </button>
+            </div>
+          </section>
         )}
 
         {account && shouldUseOnChain && (

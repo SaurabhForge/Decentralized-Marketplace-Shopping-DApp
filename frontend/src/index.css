@@ -13,6 +13,7 @@
   --brand-dark: #115e59;
   --brand-soft: #e6f5f3;
   --blue: #2563eb;
+  --blue-soft: #eff6ff;
   --danger: #b42318;
   --danger-soft: #fff1f0;
   --shadow: 0 18px 45px rgba(16, 24, 40, 0.08);
@@ -310,7 +311,20 @@ main {
   padding: 16px 18px;
 }
 
-.alert-error span {
+.alert-info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 24px;
+  border: 1px solid #bfd7ff;
+  border-radius: 12px;
+  background: var(--blue-soft);
+  color: #1849a9;
+  padding: 16px 18px;
+}
+
+.alert-error span,
+.alert-info span {
   flex: 1;
 }
 
@@ -334,6 +348,23 @@ main {
   color: var(--text);
   font-size: 1.55rem;
   letter-spacing: 0;
+}
+
+.activation-panel {
+  align-items: center;
+}
+
+.activation-copy {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.activation-copy p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
 }
 
 .listing-form {
@@ -590,8 +621,14 @@ footer {
 
   .hero,
   .seller-panel,
-  .listing-form {
+  .listing-form,
+  .activation-copy {
     grid-template-columns: 1fr;
+  }
+
+  .activation-copy {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .hero-copy {
