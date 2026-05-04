@@ -365,6 +365,48 @@ function App() {
     setLoading(false);
   };
 
+  useEffect(() => {
+    if (!window.ethereum) return undefined;
+
+    const handleAccountsChanged = async (accounts) => {
+      setError('');
+      setMarketplace(null);
+      setProducts([]);
+
+      if (!accounts.length) {
+        setAccount(null);
+        setNotice('Wallet disconnected.');
+        setLoading(false);
+        return;
+      }
+
+      const nextAccount = accounts[0];
+      setAccount(nextAccount);
+
+      if (shouldUseOnChain) {
+        await initContract(activeContractAddress);
+      } else {
+        await hydrateHostedOrders(nextAccount);
+        setNotice('Wallet changed. Purchase history refreshed.');
+        setLoading(false);
+      }
+    };
+
+    const handleChainChanged = () => {
+      if (shouldUseOnChain) {
+        window.location.reload();
+      }
+    };
+
+    window.ethereum.on?.('accountsChanged', handleAccountsChanged);
+    window.ethereum.on?.('chainChanged', handleChainChanged);
+
+    return () => {
+      window.ethereum.removeListener?.('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener?.('chainChanged', handleChainChanged);
+    };
+  }, [activeContractAddress, shouldUseOnChain]);
+
   const loadProducts = async (contract) => {
     try {
       setLoading(true);
