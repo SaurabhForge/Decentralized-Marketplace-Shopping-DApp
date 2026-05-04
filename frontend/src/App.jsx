@@ -56,6 +56,7 @@ const walletNetwork = {
   },
 };
 const contractStorageKey = `blockmart-marketplace-contract-${walletNetwork.chainId}`;
+const signedOrdersStorageKey = `blockmart-signed-orders-${walletNetwork.chainId}`;
 const getStoredContractAddress = () => {
   if (typeof window === 'undefined') return '';
   return window.localStorage.getItem(contractStorageKey) || '';
@@ -69,6 +70,20 @@ const getInitialContractAddress = () => (
   import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS
   || (!import.meta.env.PROD ? localContractAddress : getStoredContractAddress())
 );
+const getStoredSignedOrders = () => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    return JSON.parse(window.localStorage.getItem(signedOrdersStorageKey) || '[]');
+  } catch {
+    return [];
+  }
+};
+const persistSignedOrders = (orders) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(signedOrdersStorageKey, JSON.stringify(orders));
+  }
+};
 
 const productImages = {
   art: 'https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=900&q=80',
@@ -129,6 +144,7 @@ function App() {
   const [isBuying, setIsBuying] = useState(null);
   const [isDeployingContract, setIsDeployingContract] = useState(false);
   const [activeContractAddress, setActiveContractAddress] = useState(getInitialContractAddress);
+  const [signedOrders, setSignedOrders] = useState(getStoredSignedOrders);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const shouldUseOnChain = Boolean(activeContractAddress);
@@ -270,6 +286,7 @@ function App() {
       if (shouldUseOnChain) {
         initContract(activeContractAddress);
       } else {
+        setNotice('Wallet connected. You can sign hosted orders now or activate an on-chain contract.');
         setLoading(false);
       }
     } catch (error) {
@@ -343,6 +360,7 @@ function App() {
       const signer = await provider.getSigner();
       const factory = new ethers.ContractFactory(marketplaceAbi, marketplaceBytecode, signer);
       const contract = await factory.deploy();
+      const deploymentTransaction = contract.deploymentTransaction();
 
       setNotice('Waiting for the contract deployment to be confirmed on-chain.');
       const deployedContract = await contract.waitForDeployment();
@@ -358,6 +376,9 @@ function App() {
         type: 'contract_deployed',
         account: accounts[0],
         contractAddress: deployedAddress,
+        transactionHash: deploymentTransaction?.hash,
+      }).catch((error) => {
+        console.warn('Accepted deployment even though analytics failed', error);
       });
     } catch (error) {
       console.error('Error deploying contract', error);
@@ -477,11 +498,74 @@ function App() {
     }
   };
 
+  const signHostedOrder = async (product) => {
+    try {
+      setError('');
+      setNotice('');
+
+      if (!window.ethereum) {
+        setError('MetaMask is not available in this browser. Install it to sign wallet orders.');
+        return;
+      }
+
+      setIsBuying(product.id);
+      const accounts = account
+        ? [account]
+        : await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const buyer = accounts[0];
+      setAccount(buyer);
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const timestamp = new Date().toISOString();
+      const message = [
+        'BlockMart hosted order',
+        `Product: ${product.name}`,
+        `Product ID: ${product.id}`,
+        `Price: ${product.price} ETH`,
+        `Buyer: ${buyer}`,
+        `Created: ${timestamp}`,
+      ].join('\n');
+      const signature = await signer.signMessage(message);
+      const order = {
+        id: `${product.id}-${Date.now()}`,
+        productId: product.id,
+        productName: product.name,
+        priceEth: product.price,
+        account: buyer,
+        signature,
+        createdAt: timestamp,
+      };
+      const nextOrders = [order, ...signedOrders.filter((item) => item.productId !== product.id)].slice(0, 20);
+
+      setSignedOrders(nextOrders);
+      persistSignedOrders(nextOrders);
+      setNotice(`Wallet order signed for ${product.name}.`);
+
+      await publishAnalyticsEvent({
+        type: 'hosted_order_signed',
+        account: buyer,
+        productId: product.id,
+        priceEth: product.price,
+        message,
+        signature,
+      }).catch((error) => {
+        console.warn('Signed order locally even though analytics failed', error);
+      });
+    } catch (error) {
+      console.error('Error signing hosted order', error);
+      setError('The wallet order was not signed. Check MetaMask and try again.');
+    } finally {
+      setIsBuying(null);
+    }
+  };
+
   const renderProductCard = (product) => {
     const meta = getProductMeta(product.name);
     const category = product.category || meta.category;
     const isOnChain = product.source === 'On-chain';
     const isOwner = account && product.owner?.toLowerCase?.() === account.toLowerCase();
+    const isSigned = signedOrders.some((order) => order.productId === product.id && order.account === account);
 
     return (
       <article key={product.id} className="product-card">
@@ -517,8 +601,8 @@ function App() {
               onClick={() => {
                 if (isOnChain) {
                   buyProduct(product.id, product.price.toString());
-                } else if (account && !shouldUseOnChain) {
-                  activateOnChainMarketplace();
+                } else if (account) {
+                  signHostedOrder(product);
                 } else {
                   connectWallet();
                 }
@@ -527,7 +611,7 @@ function App() {
                 isBuying === product.id
                 || isOwner
                 || isDeployingContract
-                || (!isOnChain && shouldUseOnChain && Boolean(account))
+                || isSigned
               }
               aria-label={`${isOnChain ? 'Buy' : account ? 'Wallet connected for' : 'Connect wallet for'} ${product.name}`}
             >
@@ -535,10 +619,10 @@ function App() {
                 ? 'Processing'
                 : isOnChain
                   ? 'Buy'
-                  : account && !shouldUseOnChain
-                    ? 'Activate'
+                  : isSigned
+                    ? 'Signed'
                     : account
-                      ? 'Wallet ready'
+                      ? 'Sign order'
                       : 'Connect'}
             </button>
           )}

@@ -44,11 +44,22 @@ const featuredProducts = [
 ];
 
 const eventSchema = Joi.object({
-  type: Joi.string().valid('product_listed', 'product_purchased').required(),
+  type: Joi.string().valid(
+    'product_listed',
+    'product_purchased',
+    'contract_deployed',
+    'hosted_order_signed',
+  ).required(),
   account: Joi.string().pattern(/^0x[a-fA-F0-9]{40}$/).required(),
-  productId: Joi.number().integer().positive().required(),
+  productId: Joi.alternatives().try(
+    Joi.number().integer().positive(),
+    Joi.string().max(120),
+  ).optional(),
   priceEth: Joi.string().optional(),
-  transactionHash: Joi.string().pattern(/^0x[a-fA-F0-9]{64}$/).required(),
+  transactionHash: Joi.string().pattern(/^0x[a-fA-F0-9]{64}$/).optional(),
+  contractAddress: Joi.string().pattern(/^0x[a-fA-F0-9]{40}$/).optional(),
+  message: Joi.string().max(1200).optional(),
+  signature: Joi.string().pattern(/^0x[a-fA-F0-9]+$/).optional(),
 }).unknown(false);
 
 app.set('trust proxy', 1);
