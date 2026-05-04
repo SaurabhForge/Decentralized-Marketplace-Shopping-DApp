@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import contractAddress from './utils/contract-address.json';
 import MarketplaceArtifact from './utils/Marketplace.json';
-import { fetchCloudConfig, fetchFeaturedProducts, getCloudApiUrl, publishAnalyticsEvent } from './services/cloudApi';
+import {
+  createHostedOrder,
+  fetchCloudConfig,
+  fetchFeaturedProducts,
+  fetchHostedOrders,
+  getCloudApiUrl,
+  publishAnalyticsEvent,
+} from './services/cloudApi';
 import {
   isGoogleConfigured,
   saveListingSnapshot,
@@ -56,10 +63,6 @@ const walletNetwork = {
 };
 const contractStorageKey = `blockmart-marketplace-contract-${walletNetwork.chainId}`;
 const signedOrdersStorageKey = `blockmart-signed-orders-${walletNetwork.chainId}`;
-const getStoredContractAddress = () => {
-  if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem(contractStorageKey) || '';
-};
 const clearStoredContractAddress = () => {
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(contractStorageKey);
@@ -67,7 +70,7 @@ const clearStoredContractAddress = () => {
 };
 const getInitialContractAddress = () => (
   import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS
-  || (!import.meta.env.PROD ? localContractAddress : getStoredContractAddress())
+  || (!import.meta.env.PROD ? localContractAddress : '')
 );
 const getStoredSignedOrders = () => {
   if (typeof window === 'undefined') return [];
@@ -196,6 +199,25 @@ function App() {
     }
   };
 
+  const hydrateHostedOrders = async (walletAddress) => {
+    try {
+      const result = await fetchHostedOrders(walletAddress);
+      const remoteOrders = result?.orders || [];
+      if (!remoteOrders.length) return;
+
+      const knownOrderIds = new Set(signedOrders.map((order) => order.id));
+      const nextOrders = [
+        ...remoteOrders.filter((order) => !knownOrderIds.has(order.id)),
+        ...signedOrders,
+      ].slice(0, 50);
+
+      setSignedOrders(nextOrders);
+      persistSignedOrders(nextOrders);
+    } catch (error) {
+      console.warn('Unable to load hosted checkout orders', error);
+    }
+  };
+
   const checkIfWalletIsConnected = async () => {
     try {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -214,6 +236,7 @@ function App() {
           if (shouldUseOnChain) {
             initContract(activeContractAddress);
           } else {
+            await hydrateHostedOrders(accounts[0]);
             setLoading(false);
           }
         } else {
@@ -284,6 +307,7 @@ function App() {
       if (shouldUseOnChain) {
         initContract(activeContractAddress);
       } else {
+        await hydrateHostedOrders(accounts[0]);
         setNotice('Wallet connected. Choose a product and click Buy to approve checkout in MetaMask.');
         setLoading(false);
       }
@@ -479,34 +503,38 @@ function App() {
         `Created: ${timestamp}`,
       ].join('\n');
       const signature = await signer.signMessage(message);
-      const order = {
-        id: `${product.id}-${Date.now()}`,
+      const orderPayload = {
+        productId: product.id,
+        account: buyer,
+        priceEth: product.price,
+        createdAt: timestamp,
+        message,
+        signature,
+      };
+      const result = await createHostedOrder(orderPayload);
+      const confirmedOrder = result?.order || {
+        id: `${buyer.toLowerCase()}_${product.id}`,
         productId: product.id,
         productName: product.name,
         priceEth: product.price,
-        account: buyer,
+        account: buyer.toLowerCase(),
+        buyer,
         signature,
         createdAt: timestamp,
+        confirmedAt: timestamp,
+        status: 'purchased',
       };
-      const nextOrders = [order, ...signedOrders.filter((item) => item.productId !== product.id)].slice(0, 20);
+      const nextOrders = [
+        confirmedOrder,
+        ...signedOrders.filter((item) => item.productId !== product.id),
+      ].slice(0, 20);
 
       setSignedOrders(nextOrders);
       persistSignedOrders(nextOrders);
       setNotice(`Checkout approved for ${product.name}.`);
-
-      await publishAnalyticsEvent({
-        type: 'hosted_order_signed',
-        account: buyer,
-        productId: product.id,
-        priceEth: product.price,
-        message,
-        signature,
-      }).catch((error) => {
-        console.warn('Signed order locally even though analytics failed', error);
-      });
     } catch (error) {
       console.error('Error signing hosted order', error);
-      setError('The checkout was not approved. Check MetaMask and try again.');
+      setError('The checkout was not confirmed. Check MetaMask and try again.');
     } finally {
       setIsBuying(null);
     }
@@ -517,7 +545,9 @@ function App() {
     const category = product.category || meta.category;
     const isOnChain = product.source === 'On-chain';
     const isOwner = account && product.owner?.toLowerCase?.() === account.toLowerCase();
-    const isSigned = signedOrders.some((order) => order.productId === product.id && order.account === account);
+    const isSigned = signedOrders.some((order) => (
+      order.productId === product.id && order.account?.toLowerCase?.() === account?.toLowerCase?.()
+    ));
 
     return (
       <article key={product.id} className="product-card">

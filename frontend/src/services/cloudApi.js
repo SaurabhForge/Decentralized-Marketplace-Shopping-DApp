@@ -26,6 +26,15 @@ export const fetchCloudConfig = () => requestJson("/api/config");
 
 export const fetchFeaturedProducts = () => requestJson("/api/products/featured");
 
+export const fetchHostedOrders = (account) => (
+  account ? requestJson(`/api/orders/${account}`) : null
+);
+
+export const createHostedOrder = (order) => requestJson("/api/orders", {
+  method: "POST",
+  body: JSON.stringify(order),
+});
+
 export const publishAnalyticsEvent = (event) => requestJson("/api/analytics/purchase", {
   method: "POST",
   body: JSON.stringify(event),

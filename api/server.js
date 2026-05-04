@@ -2,6 +2,7 @@ import { Firestore } from '@google-cloud/firestore';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import { verifyMessage } from 'ethers';
 import helmet from 'helmet';
 import Joi from 'joi';
 import morgan from 'morgan';
@@ -14,6 +15,7 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,ht
   .map((origin) => origin.trim())
   .filter(Boolean);
 const renderFrontendOriginPattern = /^https:\/\/blockmart-marketplace-frontend(?:-[a-z0-9-]+)?\.onrender\.com$/;
+const hostedOrders = new Map();
 
 const firestore = projectId
   ? new Firestore({
@@ -43,6 +45,7 @@ const featuredProducts = [
   },
 ];
 
+const addressSchema = Joi.string().pattern(/^0x[a-fA-F0-9]{40}$/);
 const eventSchema = Joi.object({
   type: Joi.string().valid(
     'product_listed',
@@ -50,7 +53,7 @@ const eventSchema = Joi.object({
     'contract_deployed',
     'hosted_order_signed',
   ).required(),
-  account: Joi.string().pattern(/^0x[a-fA-F0-9]{40}$/).required(),
+  account: addressSchema.required(),
   productId: Joi.alternatives().try(
     Joi.number().integer().positive(),
     Joi.string().max(120),
@@ -61,6 +64,54 @@ const eventSchema = Joi.object({
   message: Joi.string().max(1200).optional(),
   signature: Joi.string().pattern(/^0x[a-fA-F0-9]+$/).optional(),
 }).unknown(false);
+
+const hostedOrderSchema = Joi.object({
+  productId: Joi.string().max(120).required(),
+  account: addressSchema.required(),
+  priceEth: Joi.string().pattern(/^\d+(\.\d+)?$/).required(),
+  createdAt: Joi.string().isoDate().required(),
+  message: Joi.string().max(1200).required(),
+  signature: Joi.string().pattern(/^0x[a-fA-F0-9]+$/).required(),
+}).unknown(false);
+
+const buildHostedOrderMessage = ({ product, account, createdAt }) => [
+  'BlockMart hosted order',
+  `Product: ${product.name}`,
+  `Product ID: ${product.id}`,
+  `Price: ${product.priceEth} ETH`,
+  `Buyer: ${account}`,
+  `Created: ${createdAt}`,
+].join('\n');
+
+const findFeaturedProduct = (productId) => featuredProducts.find((product) => product.id === productId);
+
+const createOrderId = (account, productId) => `${account.toLowerCase()}_${productId}`;
+
+const getHostedOrdersForAccount = async (account) => {
+  const accountKey = account.toLowerCase();
+
+  if (!firestore) {
+    return [...hostedOrders.values()].filter((order) => order.account === accountKey);
+  }
+
+  const snapshot = await firestore
+    .collection('marketplace_hosted_orders')
+    .where('account', '==', accountKey)
+    .limit(50)
+    .get();
+
+  return snapshot.docs.map((doc) => doc.data());
+};
+
+const saveHostedOrder = async (order) => {
+  if (!firestore) {
+    hostedOrders.set(order.id, order);
+    return 'memory';
+  }
+
+  await firestore.collection('marketplace_hosted_orders').doc(order.id).set(order, { merge: true });
+  return 'firestore';
+};
 
 app.set('trust proxy', 1);
 app.use(helmet());
@@ -182,6 +233,78 @@ app.get('/api/products/featured', async (_request, response, next) => {
   } catch (error) {
     console.warn('Using fallback featured products because Firestore is unavailable', error);
     response.json({ products: featuredProducts, source: 'fallback' });
+  }
+});
+
+app.get('/api/orders/:account', async (request, response, next) => {
+  try {
+    const { value: account, error } = addressSchema.required().validate(request.params.account);
+    if (error) {
+      response.status(400).json({ error: error.message });
+      return;
+    }
+
+    const orders = await getHostedOrdersForAccount(account);
+    response.json({ orders });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/orders', async (request, response, next) => {
+  try {
+    const { value, error } = hostedOrderSchema.validate(request.body);
+    if (error) {
+      response.status(400).json({ error: error.message });
+      return;
+    }
+
+    const product = findFeaturedProduct(value.productId);
+    if (!product) {
+      response.status(404).json({ error: 'Product was not found' });
+      return;
+    }
+
+    if (value.priceEth !== product.priceEth) {
+      response.status(409).json({ error: 'Product price changed. Refresh and try again.' });
+      return;
+    }
+
+    const expectedMessage = buildHostedOrderMessage({
+      product,
+      account: value.account,
+      createdAt: value.createdAt,
+    });
+
+    if (value.message !== expectedMessage) {
+      response.status(400).json({ error: 'Signed checkout message does not match the selected product.' });
+      return;
+    }
+
+    const recoveredAccount = verifyMessage(value.message, value.signature);
+    if (recoveredAccount.toLowerCase() !== value.account.toLowerCase()) {
+      response.status(401).json({ error: 'Wallet signature does not match the buyer account.' });
+      return;
+    }
+
+    const order = {
+      id: createOrderId(value.account, value.productId),
+      productId: value.productId,
+      productName: product.name,
+      category: product.category,
+      priceEth: product.priceEth,
+      account: value.account.toLowerCase(),
+      buyer: value.account,
+      signature: value.signature,
+      createdAt: value.createdAt,
+      confirmedAt: new Date().toISOString(),
+      status: 'purchased',
+    };
+    const source = await saveHostedOrder(order);
+
+    response.status(201).json({ ok: true, order, source });
+  } catch (error) {
+    next(error);
   }
 });
 
