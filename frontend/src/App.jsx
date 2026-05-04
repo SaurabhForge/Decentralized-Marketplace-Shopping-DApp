@@ -39,7 +39,8 @@ const catalogFallback = [
 ];
 
 const categoryOptions = ['All', 'Collectibles', 'Electronics', 'Wearables'];
-const configuredContractAddress = import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS || contractAddress.Marketplace;
+const localContractAddress = contractAddress.Marketplace;
+const configuredContractAddress = import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS || (!import.meta.env.PROD ? localContractAddress : '');
 const walletNetwork = {
   chainId: import.meta.env.VITE_CHAIN_ID_HEX || '0x7a69',
   chainName: import.meta.env.VITE_CHAIN_NAME || 'Hardhat Localhost',
@@ -305,7 +306,10 @@ function App() {
 
   const addProduct = async (event) => {
     event.preventDefault();
-    if (!productName || !productPrice || !marketplace) return;
+    if (!productName || !productPrice || !marketplace || !shouldUseOnChain) {
+      setError('A public marketplace contract is required before hosted listings can be published on-chain.');
+      return;
+    }
 
     setIsAdding(true);
     try {
@@ -422,7 +426,7 @@ function App() {
               disabled={isBuying === product.id || isOwner || (!isOnChain && Boolean(account))}
               aria-label={`${isOnChain ? 'Buy' : account ? 'Wallet connected for' : 'Connect wallet for'} ${product.name}`}
             >
-              {isBuying === product.id ? 'Processing' : isOnChain ? 'Buy' : account ? 'Connected' : 'Connect'}
+              {isBuying === product.id ? 'Processing' : isOnChain ? 'Buy' : account ? 'Wallet ready' : 'Connect'}
             </button>
           )}
         </div>
@@ -505,8 +509,8 @@ function App() {
               <strong>{totalValue} ETH</strong>
             </div>
             <div>
-              <span>Contract</span>
-              <strong>{shortAddress(configuredContractAddress)}</strong>
+              <span>{shouldUseOnChain ? 'Contract' : 'Mode'}</span>
+              <strong>{shouldUseOnChain ? shortAddress(configuredContractAddress) : 'Hosted catalog'}</strong>
             </div>
           </div>
         </section>
@@ -519,7 +523,7 @@ function App() {
           </div>
         )}
 
-        {account && (
+        {account && shouldUseOnChain && (
           <section className="seller-panel">
             <div>
               <span className="eyebrow">Seller tools</span>
@@ -563,8 +567,8 @@ function App() {
         <section className="catalog-section">
           <div className="section-header">
             <div>
-              <span className="eyebrow">{account ? 'On-chain inventory' : 'Hosted storefront'}</span>
-              <h2>{account ? 'Fresh listings' : 'Featured products'}</h2>
+              <span className="eyebrow">{account && shouldUseOnChain ? 'On-chain inventory' : 'Hosted storefront'}</span>
+              <h2>{account && shouldUseOnChain ? 'Fresh listings' : 'Featured products'}</h2>
             </div>
             <div className="category-tabs" aria-label="Product categories">
               {categoryOptions.map((category) => (
@@ -580,7 +584,7 @@ function App() {
             </div>
           </div>
 
-          {loading && account ? (
+          {loading && account && shouldUseOnChain ? (
             <div className="loader" aria-live="polite">
               <span className="spinner"></span>
               Syncing listings
