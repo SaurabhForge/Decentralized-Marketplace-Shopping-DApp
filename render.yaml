@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: blockmart-marketplace-api-saurabhforge
+    runtime: node
+    plan: free
+    rootDir: api
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_ORIGIN
+        value: https://blockmart-marketplace-frontend-saurabhforge.onrender.com
+      - key: CHAIN_ID
+        value: 11155111
+
+  - type: web
+    name: blockmart-marketplace-frontend-saurabhforge
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: commit
+    envVars:
+      - key: VITE_API_URL
+        value: https://blockmart-marketplace-api-saurabhforge.onrender.com
+      - key: VITE_CHAIN_ID_HEX
+        value: "0xaa36a7"
+      - key: VITE_CHAIN_NAME
+        value: Sepolia
+      - key: VITE_RPC_URL
+        value: https://rpc.sepolia.org
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

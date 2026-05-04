@@ -39,6 +39,19 @@ const catalogFallback = [
 ];
 
 const categoryOptions = ['All', 'Collectibles', 'Electronics', 'Wearables'];
+const configuredContractAddress = import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS || contractAddress.Marketplace;
+const walletNetwork = {
+  chainId: import.meta.env.VITE_CHAIN_ID_HEX || '0x7a69',
+  chainName: import.meta.env.VITE_CHAIN_NAME || 'Hardhat Localhost',
+  rpcUrls: [import.meta.env.VITE_RPC_URL || 'http://127.0.0.1:8545/'],
+  nativeCurrency: {
+    name: import.meta.env.VITE_NATIVE_CURRENCY_NAME || 'ETH',
+    symbol: import.meta.env.VITE_NATIVE_CURRENCY_SYMBOL || 'ETH',
+    decimals: 18,
+  },
+};
+const hasPublicContract = Boolean(import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS);
+const shouldUseOnChain = !import.meta.env.PROD || hasPublicContract;
 
 const productImages = {
   art: 'https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=900&q=80',
@@ -116,8 +129,8 @@ function App() {
       }))
       : catalogFallback;
 
-    return account ? products : cloudProducts;
-  }, [account, featuredProducts, products]);
+    return shouldUseOnChain && products.length > 0 ? products : cloudProducts;
+  }, [featuredProducts, products]);
 
   const visibleProducts = useMemo(() => storefrontProducts.filter((product) => {
     const meta = getProductMeta(product.name);
@@ -155,9 +168,15 @@ function App() {
       if (window.ethereum) {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts.length > 0) {
-          await checkAndSwitchNetwork();
+          if (shouldUseOnChain) {
+            await checkAndSwitchNetwork();
+          }
           setAccount(accounts[0]);
-          initContract();
+          if (shouldUseOnChain) {
+            initContract();
+          } else {
+            setLoading(false);
+          }
         } else {
           setLoading(false);
         }
@@ -176,7 +195,7 @@ function App() {
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x7a69' }],
+        params: [{ chainId: walletNetwork.chainId }],
       });
     } catch (switchError) {
       if (switchError.code === 4902) {
@@ -185,10 +204,10 @@ function App() {
             method: 'wallet_addEthereumChain',
             params: [
               {
-                chainId: '0x7a69',
-                chainName: 'Hardhat Localhost',
-                rpcUrls: ['http://127.0.0.1:8545/'],
-                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                chainId: walletNetwork.chainId,
+                chainName: walletNetwork.chainName,
+                rpcUrls: walletNetwork.rpcUrls,
+                nativeCurrency: walletNetwork.nativeCurrency,
               },
             ],
           });
@@ -208,9 +227,15 @@ function App() {
       }
 
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      await checkAndSwitchNetwork();
+      if (shouldUseOnChain) {
+        await checkAndSwitchNetwork();
+      }
       setAccount(accounts[0]);
-      initContract();
+      if (shouldUseOnChain) {
+        initContract();
+      } else {
+        setLoading(false);
+      }
     } catch (error) {
       console.error(error);
       setError('Wallet connection was not completed. Open MetaMask and try again.');
@@ -236,7 +261,7 @@ function App() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(
-        contractAddress.Marketplace,
+        configuredContractAddress,
         MarketplaceArtifact,
         signer,
       );
@@ -245,7 +270,7 @@ function App() {
       await loadProducts(contract);
     } catch (error) {
       console.error('Error init contract', error);
-      setError('The local blockchain is not reachable. You can still browse the hosted catalog.');
+      setError('The configured blockchain contract is not reachable. You can still browse the hosted catalog.');
       setLoading(false);
     }
   };
@@ -272,7 +297,7 @@ function App() {
       setProducts(items);
     } catch (error) {
       console.error('Error loading products', error);
-      setError('The local blockchain is not reachable. You can still browse the hosted catalog.');
+      setError('The configured blockchain contract is not reachable. You can still browse the hosted catalog.');
     } finally {
       setLoading(false);
     }
@@ -394,10 +419,10 @@ function App() {
             <button
               className="btn btn-primary"
               onClick={() => (isOnChain ? buyProduct(product.id, product.price.toString()) : connectWallet())}
-              disabled={isBuying === product.id || isOwner}
-              aria-label={`${isOnChain ? 'Buy' : 'Connect wallet for'} ${product.name}`}
+              disabled={isBuying === product.id || isOwner || (!isOnChain && Boolean(account))}
+              aria-label={`${isOnChain ? 'Buy' : account ? 'Wallet connected for' : 'Connect wallet for'} ${product.name}`}
             >
-              {isBuying === product.id ? 'Processing' : isOnChain ? 'Buy' : 'Connect'}
+              {isBuying === product.id ? 'Processing' : isOnChain ? 'Buy' : account ? 'Connected' : 'Connect'}
             </button>
           )}
         </div>
@@ -430,7 +455,7 @@ function App() {
 
           <div className="header-actions">
             <span className={`status-chip ${cloudApiReady ? 'online' : ''}`}>
-              {cloudApiReady ? 'GCP online' : getCloudApiUrl() ? 'GCP pending' : 'Local mode'}
+              {cloudApiReady ? 'API online' : getCloudApiUrl() ? 'API pending' : 'Local mode'}
             </span>
             {googleUser && (
               <span className="status-chip" title={googleUser.email || googleUser.displayName}>
@@ -481,7 +506,7 @@ function App() {
             </div>
             <div>
               <span>Contract</span>
-              <strong>{shortAddress(contractAddress.Marketplace)}</strong>
+              <strong>{shortAddress(configuredContractAddress)}</strong>
             </div>
           </div>
         </section>

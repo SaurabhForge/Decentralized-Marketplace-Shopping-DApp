@@ -88,12 +88,52 @@ Frontend env value: VITE_GCP_API_URL=https://blockmart-marketplace-api-xxxxx-uc.
 
 It also creates `frontend/.env.gcp` with `VITE_GCP_API_URL` so the frontend can call the Cloud Run API.
 
+## Deploy To Render
+
+This repo includes a Render Blueprint at `render.yaml` for a complete hosted deployment:
+
+- Backend API web service: `blockmart-marketplace-api-saurabhforge`
+- Frontend static site: `blockmart-marketplace-frontend-saurabhforge`
+
+Expected Render URLs after the Blueprint is created:
+
+```text
+https://blockmart-marketplace-api-saurabhforge.onrender.com
+https://blockmart-marketplace-frontend-saurabhforge.onrender.com
+```
+
+Deploy steps:
+
+1. Open Render Dashboard.
+2. Create a new Blueprint from this GitHub repo.
+3. Select the `main` branch and the root `render.yaml`.
+4. Render will build both services and enable auto-deploys on future pushes.
+
+The hosted storefront works with the Render API immediately. Wallet connection works in the browser through MetaMask. To enable live on-chain buying and listing on a public network, deploy `contracts/Marketplace.sol` to Sepolia and set this frontend environment variable in Render:
+
+```text
+VITE_MARKETPLACE_CONTRACT_ADDRESS=your_sepolia_contract_address
+```
+
+The Blueprint already sets Sepolia defaults:
+
+```text
+VITE_CHAIN_ID_HEX=0xaa36a7
+VITE_CHAIN_NAME=Sepolia
+VITE_RPC_URL=https://rpc.sepolia.org
+```
+
 ## Firebase Environment
 
 Add these values to `frontend/.env` or copy from `frontend/.env.example`:
 
 ```text
+VITE_API_URL=https://blockmart-marketplace-api-saurabhforge.onrender.com
 VITE_GCP_API_URL=https://blockmart-marketplace-api-xxxxx-uc.a.run.app
+VITE_CHAIN_ID_HEX=0xaa36a7
+VITE_CHAIN_NAME=Sepolia
+VITE_RPC_URL=https://rpc.sepolia.org
+VITE_MARKETPLACE_CONTRACT_ADDRESS=your_public_network_contract
 VITE_FIREBASE_API_KEY=your_firebase_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your-project

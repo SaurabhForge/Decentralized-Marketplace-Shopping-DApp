@@ -1,4 +1,4 @@
-const apiBaseUrl = import.meta.env.VITE_GCP_API_URL?.replace(/\/$/, "");
+const apiBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_GCP_API_URL || "").replace(/\/$/, "");
 
 const requestJson = async (path, options = {}) => {
   if (!apiBaseUrl) {
