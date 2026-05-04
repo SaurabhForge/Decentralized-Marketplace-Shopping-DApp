@@ -13,6 +13,7 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,ht
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const renderFrontendOriginPattern = /^https:\/\/blockmart-marketplace-frontend(?:-[a-z0-9-]+)?\.onrender\.com$/;
 
 const firestore = projectId
   ? new Firestore({
@@ -56,7 +57,7 @@ app.use(express.json({ limit: '32kb' }));
 app.use(morgan('combined'));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || renderFrontendOriginPattern.test(origin)) {
       callback(null, true);
       return;
     }

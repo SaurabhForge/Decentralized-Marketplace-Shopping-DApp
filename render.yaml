@@ -12,12 +12,12 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_ORIGIN
-        value: https://blockmart-marketplace-frontend-saurabhforge.onrender.com
+        value: https://blockmart-marketplace-frontend.onrender.com
       - key: CHAIN_ID
         value: 11155111
 
   - type: web
-    name: blockmart-marketplace-frontend-saurabhforge
+    name: blockmart-marketplace-frontend
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build

@@ -93,13 +93,13 @@ It also creates `frontend/.env.gcp` with `VITE_GCP_API_URL` so the frontend can 
 This repo includes a Render Blueprint at `render.yaml` for a complete hosted deployment:
 
 - Backend API web service: `blockmart-marketplace-api-saurabhforge`
-- Frontend static site: `blockmart-marketplace-frontend-saurabhforge`
+- Frontend static site: `blockmart-marketplace-frontend`
 
 Expected Render URLs after the Blueprint is created:
 
 ```text
 https://blockmart-marketplace-api-saurabhforge.onrender.com
-https://blockmart-marketplace-frontend-saurabhforge.onrender.com
+https://blockmart-marketplace-frontend.onrender.com
 ```
 
 Deploy steps:
