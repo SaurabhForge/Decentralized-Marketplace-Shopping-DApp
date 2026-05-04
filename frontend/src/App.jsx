@@ -284,7 +284,7 @@ function App() {
       if (shouldUseOnChain) {
         initContract(activeContractAddress);
       } else {
-        setNotice('Wallet connected. Choose a product and sign the hosted order in MetaMask.');
+        setNotice('Wallet connected. Choose a product and click Buy to approve checkout in MetaMask.');
         setLoading(false);
       }
     } catch (error) {
@@ -337,7 +337,7 @@ function App() {
     setMarketplace(null);
     setProducts([]);
     setError('');
-    setNotice('Hosted catalog mode restored. Connected wallets can sign hosted orders.');
+    setNotice('Hosted catalog mode restored. Connected wallets can buy with MetaMask approval.');
     setLoading(false);
   };
 
@@ -492,7 +492,7 @@ function App() {
 
       setSignedOrders(nextOrders);
       persistSignedOrders(nextOrders);
-      setNotice(`Wallet order signed for ${product.name}.`);
+      setNotice(`Checkout approved for ${product.name}.`);
 
       await publishAnalyticsEvent({
         type: 'hosted_order_signed',
@@ -506,7 +506,7 @@ function App() {
       });
     } catch (error) {
       console.error('Error signing hosted order', error);
-      setError('The wallet order was not signed. Check MetaMask and try again.');
+      setError('The checkout was not approved. Check MetaMask and try again.');
     } finally {
       setIsBuying(null);
     }
@@ -553,10 +553,8 @@ function App() {
               onClick={() => {
                 if (isOnChain) {
                   buyProduct(product.id, product.price.toString());
-                } else if (account) {
-                  signHostedOrder(product);
                 } else {
-                  connectWallet();
+                  signHostedOrder(product);
                 }
               }}
               disabled={
@@ -564,17 +562,13 @@ function App() {
                 || isOwner
                 || isSigned
               }
-              aria-label={`${isOnChain ? 'Buy' : account ? 'Wallet connected for' : 'Connect wallet for'} ${product.name}`}
+              aria-label={`Buy ${product.name}`}
             >
               {isBuying === product.id
                 ? 'Processing'
-                : isOnChain
-                  ? 'Buy'
-                  : isSigned
-                    ? 'Signed'
-                    : account
-                      ? 'Sign order'
-                      : 'Connect'}
+                : isSigned
+                  ? 'Purchased'
+                  : 'Buy'}
             </button>
           )}
         </div>
@@ -688,12 +682,12 @@ function App() {
           <section className="seller-panel checkout-panel">
             <div>
               <span className="eyebrow">Wallet checkout</span>
-              <h2>Ready to sign orders</h2>
+              <h2>Ready to buy</h2>
             </div>
             <div className="checkout-copy">
               <p>
-                Product checkout uses MetaMask signatures, so it works without deploying a new Sepolia contract or
-                needing test ETH. Select a product below and approve the signature request.
+                Product checkout uses MetaMask approval, so it works without deploying a new Sepolia contract or
+                needing test ETH. Select a product below and approve the wallet request.
               </p>
             </div>
           </section>
