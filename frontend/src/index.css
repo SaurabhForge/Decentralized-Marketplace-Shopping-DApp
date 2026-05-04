@@ -333,6 +333,10 @@ main {
   font-weight: 800;
 }
 
+.alert-button {
+  flex: 0 0 auto;
+}
+
 .seller-panel {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);

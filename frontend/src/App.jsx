@@ -66,6 +66,11 @@ const persistContractAddress = (address) => {
     window.localStorage.setItem(contractStorageKey, address);
   }
 };
+const clearStoredContractAddress = () => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(contractStorageKey);
+  }
+};
 const getInitialContractAddress = () => (
   import.meta.env.VITE_MARKETPLACE_CONTRACT_ADDRESS
   || (!import.meta.env.PROD ? localContractAddress : getStoredContractAddress())
@@ -331,6 +336,16 @@ function App() {
       setError('The configured blockchain contract is not reachable. You can still browse the hosted catalog.');
       setLoading(false);
     }
+  };
+
+  const resetOnChainMode = () => {
+    clearStoredContractAddress();
+    setActiveContractAddress('');
+    setMarketplace(null);
+    setProducts([]);
+    setError('');
+    setNotice('Hosted catalog mode restored. Connected wallets can sign hosted orders.');
+    setLoading(false);
   };
 
   const activateOnChainMarketplace = async () => {
@@ -723,7 +738,13 @@ function App() {
           <div className="alert-error" role="alert">
             <strong>Connection notice</strong>
             <span>{error}</span>
-            <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Get MetaMask</a>
+            {activeContractAddress ? (
+              <button type="button" className="btn btn-secondary alert-button" onClick={resetOnChainMode}>
+                Reset contract
+              </button>
+            ) : (
+              <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Get MetaMask</a>
+            )}
           </div>
         )}
 
