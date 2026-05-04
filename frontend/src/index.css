@@ -176,6 +176,12 @@ footer {
   color: var(--brand-dark);
 }
 
+.status-chip.balance-chip {
+  border-color: #bfdbfe;
+  background: var(--blue-soft);
+  color: #1849a9;
+}
+
 .btn {
   min-height: 40px;
   display: inline-flex;
@@ -195,6 +201,10 @@ footer {
 .btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.wallet-button:disabled {
+  opacity: 1;
 }
 
 .btn-primary {

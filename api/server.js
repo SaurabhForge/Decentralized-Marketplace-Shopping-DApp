@@ -29,19 +29,19 @@ const featuredProducts = [
     id: 'cloud-nft-1',
     name: 'Genesis NFT',
     category: 'Digital Collectible',
-    priceEth: '0.85',
+    priceEth: '0.01',
   },
   {
     id: 'cloud-keyboard-1',
     name: 'Cyber Keyboard Pro',
     category: 'Hardware',
-    priceEth: '0.12',
+    priceEth: '0.005',
   },
   {
     id: 'cloud-watch-1',
     name: 'Quantum SmartWatch',
     category: 'Wearable',
-    priceEth: '0.45',
+    priceEth: '0.008',
   },
 ];
 

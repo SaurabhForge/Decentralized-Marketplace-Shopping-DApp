@@ -23,7 +23,7 @@ const catalogFallback = [
     id: 'local-1',
     name: 'Genesis NFT',
     category: 'Collectibles',
-    price: '0.85',
+    price: '0.01',
     owner: 'Verified seller',
     source: 'Cloud catalog',
   },
@@ -31,7 +31,7 @@ const catalogFallback = [
     id: 'local-2',
     name: 'Cyber Keyboard Pro',
     category: 'Electronics',
-    price: '0.12',
+    price: '0.005',
     owner: 'Creator store',
     source: 'Cloud catalog',
   },
@@ -39,7 +39,7 @@ const catalogFallback = [
     id: 'local-3',
     name: 'Quantum SmartWatch',
     category: 'Wearables',
-    price: '0.45',
+    price: '0.008',
     owner: 'Device studio',
     source: 'Cloud catalog',
   },
@@ -65,9 +65,24 @@ const walletNetwork = {
 const shouldSyncWalletNetwork = !isLocalContractMode;
 const contractStorageKey = `blockmart-marketplace-contract-${walletNetwork.chainId}`;
 const signedOrdersStorageKey = `blockmart-signed-orders-${walletNetwork.chainId}`;
+const walletSessionStorageKey = `blockmart-wallet-session-${walletNetwork.chainId}`;
 const clearStoredContractAddress = () => {
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(contractStorageKey);
+  }
+};
+const getStoredWalletAccount = () => {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(walletSessionStorageKey) || '';
+};
+const rememberWalletAccount = (walletAddress) => {
+  if (typeof window !== 'undefined' && walletAddress) {
+    window.localStorage.setItem(walletSessionStorageKey, walletAddress);
+  }
+};
+const clearStoredWalletAccount = () => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(walletSessionStorageKey);
   }
 };
 const getInitialContractAddress = () => (
@@ -129,6 +144,17 @@ const shortAddress = (value) => {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 };
 
+const formatEthAmount = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return '0';
+  if (numericValue > 0 && numericValue < 0.0001) return '<0.0001';
+  return numericValue.toLocaleString(undefined, {
+    maximumFractionDigits: 4,
+  });
+};
+
+const formatWeiBalance = (balanceWei) => formatEthAmount(ethers.formatEther(balanceWei));
+
 const getOrderStatusLabel = (order) => {
   if (order.syncStatus === 'syncing') return 'Saving receipt';
   if (order.syncStatus === 'local') return 'Saved locally';
@@ -156,11 +182,18 @@ function App() {
   const [productPrice, setProductPrice] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isBuying, setIsBuying] = useState(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [walletBalanceEth, setWalletBalanceEth] = useState('');
   const [activeContractAddress, setActiveContractAddress] = useState(getInitialContractAddress);
   const [signedOrders, setSignedOrders] = useState(getStoredSignedOrders);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const shouldUseOnChain = Boolean(activeContractAddress);
+  const walletButtonLabel = isConnecting
+    ? 'Connecting'
+    : account
+      ? `Connected ${shortAddress(account)}`
+      : 'Connect wallet';
 
   useEffect(() => {
     checkIfWalletIsConnected();
@@ -250,11 +283,70 @@ function App() {
     });
   };
 
+  const refreshWalletBalance = async (walletAddress) => {
+    if (!window.ethereum || !walletAddress) return null;
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const balanceWei = await provider.getBalance(walletAddress);
+    const balanceEth = formatWeiBalance(balanceWei);
+    setWalletBalanceEth(balanceEth);
+    return { provider, balanceWei, balanceEth };
+  };
+
+  const ensureSufficientBalance = async (walletAddress, priceEth, productNameToBuy) => {
+    const balance = await refreshWalletBalance(walletAddress);
+    if (!balance) {
+      setError('Unable to read wallet balance. Check MetaMask and try again.');
+      return null;
+    }
+
+    const priceWei = ethers.parseEther(priceEth.toString());
+    if (balance.balanceWei < priceWei) {
+      setNotice('');
+      setError(
+        `Insufficient ${walletNetwork.chainName} ETH for ${productNameToBuy}. `
+        + `Price is ${priceEth} ETH, but this wallet has ${balance.balanceEth} ETH. `
+        + `Add ${walletNetwork.chainName} test ETH or choose a lower priced item.`,
+      );
+      return null;
+    }
+
+    return balance;
+  };
+
   const checkIfWalletIsConnected = async () => {
     try {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       if (!shouldUseOnChain) {
+        const rememberedAccount = getStoredWalletAccount();
+        if (!window.ethereum || !rememberedAccount) {
+          setLoading(false);
+          return;
+        }
+
+        const networkReady = await ensureHostedWalletNetwork({ showNotice: false });
+        if (!networkReady) {
+          setLoading(false);
+          return;
+        }
+
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        const connectedAccount = accounts.find(
+          (item) => item.toLowerCase() === rememberedAccount.toLowerCase(),
+        ) || accounts[0];
+
+        if (connectedAccount) {
+          setAccount(connectedAccount);
+          rememberWalletAccount(connectedAccount);
+          await Promise.allSettled([
+            refreshWalletBalance(connectedAccount),
+            hydrateHostedOrders(connectedAccount),
+          ]);
+        } else {
+          clearStoredWalletAccount();
+        }
+
         setLoading(false);
         return;
       }
@@ -269,6 +361,8 @@ function App() {
           }
 
           setAccount(accounts[0]);
+          rememberWalletAccount(accounts[0]);
+          await refreshWalletBalance(accounts[0]);
           initContract(activeContractAddress);
         } else {
           setLoading(false);
@@ -318,11 +412,13 @@ function App() {
     return false;
   };
 
-  const ensureHostedWalletNetwork = async () => {
+  const ensureHostedWalletNetwork = async ({ showNotice = true } = {}) => {
     if (!shouldSyncWalletNetwork || !window.ethereum) return true;
 
     try {
-      setNotice(`Switching MetaMask to ${walletNetwork.chainName}.`);
+      if (showNotice) {
+        setNotice(`Switching MetaMask to ${walletNetwork.chainName}.`);
+      }
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: walletNetwork.chainId }],
@@ -357,11 +453,13 @@ function App() {
   const connectWallet = async () => {
     try {
       setError('');
+      setNotice('');
       if (!window.ethereum) {
         setError('MetaMask is not available in this browser. Install it to buy or list products.');
         return;
       }
 
+      setIsConnecting(true);
       if (shouldUseOnChain) {
         const networkReady = await checkAndSwitchNetwork();
         if (!networkReady) {
@@ -377,17 +475,26 @@ function App() {
       }
 
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setAccount(accounts[0]);
+      const connectedAccount = accounts[0];
+      setAccount(connectedAccount);
+      rememberWalletAccount(connectedAccount);
+      const balance = await refreshWalletBalance(connectedAccount);
+
       if (shouldUseOnChain) {
         initContract(activeContractAddress);
       } else {
-        await hydrateHostedOrders(accounts[0]);
-        setNotice('Wallet connected. Choose a product and click Buy to approve checkout in MetaMask.');
+        await hydrateHostedOrders(connectedAccount);
+        setNotice(
+          `Wallet connected: ${shortAddress(connectedAccount)}. `
+          + `Balance: ${balance?.balanceEth || '0'} ${walletNetwork.chainName} ETH.`,
+        );
         setLoading(false);
       }
     } catch (error) {
       console.error(error);
       setError('Wallet connection was not completed. Open MetaMask and try again.');
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -435,6 +542,7 @@ function App() {
     setMarketplace(null);
     setProducts([]);
     setError('');
+    setWalletBalanceEth('');
     setNotice('Hosted catalog mode restored. Connected wallets can buy with MetaMask approval.');
     setLoading(false);
   };
@@ -449,6 +557,8 @@ function App() {
 
       if (!accounts.length) {
         setAccount(null);
+        setWalletBalanceEth('');
+        clearStoredWalletAccount();
         setNotice('Wallet disconnected.');
         setLoading(false);
         return;
@@ -456,19 +566,33 @@ function App() {
 
       const nextAccount = accounts[0];
       setAccount(nextAccount);
+      rememberWalletAccount(nextAccount);
 
       if (shouldUseOnChain) {
+        await refreshWalletBalance(nextAccount);
         await initContract(activeContractAddress);
       } else {
+        const balance = await refreshWalletBalance(nextAccount);
         await hydrateHostedOrders(nextAccount);
-        setNotice('Wallet changed. Purchase history refreshed.');
+        setNotice(
+          `Wallet changed to ${shortAddress(nextAccount)}. `
+          + `Balance: ${balance?.balanceEth || '0'} ${walletNetwork.chainName} ETH.`,
+        );
         setLoading(false);
       }
     };
 
-    const handleChainChanged = () => {
+    const handleChainChanged = async () => {
       if (shouldUseOnChain) {
         window.location.reload();
+        return;
+      }
+
+      if (account) {
+        const networkReady = await ensureHostedWalletNetwork({ showNotice: false });
+        if (networkReady) {
+          await refreshWalletBalance(account);
+        }
       }
     };
 
@@ -479,7 +603,7 @@ function App() {
       window.ethereum.removeListener?.('accountsChanged', handleAccountsChanged);
       window.ethereum.removeListener?.('chainChanged', handleChainChanged);
     };
-  }, [activeContractAddress, shouldUseOnChain]);
+  }, [account, activeContractAddress, shouldUseOnChain]);
 
   const loadProducts = async (contract) => {
     try {
@@ -564,6 +688,9 @@ function App() {
     setIsBuying(id);
     try {
       const priceInWei = ethers.parseEther(priceStr);
+      const balance = await ensureSufficientBalance(account, priceStr, `product #${id}`);
+      if (!balance) return;
+
       const tx = await marketplace.buyProduct(id, { value: priceInWei });
       const receipt = await tx.wait();
 
@@ -612,8 +739,15 @@ function App() {
         : await window.ethereum.request({ method: 'eth_requestAccounts' });
       const buyer = accounts[0];
       setAccount(buyer);
+      rememberWalletAccount(buyer);
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const balance = await ensureSufficientBalance(buyer, product.price, product.name);
+      if (!balance) {
+        setIsBuying(null);
+        return;
+      }
+
+      const provider = balance.provider;
       const signer = await provider.getSigner();
       const timestamp = new Date().toISOString();
       const message = [
@@ -795,13 +929,23 @@ function App() {
                 {googleUser.displayName || googleUser.email}
               </span>
             )}
+            {account && walletBalanceEth && (
+              <span className="status-chip balance-chip">
+                {walletBalanceEth} {walletNetwork.chainName} ETH
+              </span>
+            )}
             {account ? (
-              <button className="btn btn-secondary" aria-label="Connected wallet address">
-                {shortAddress(account)}
+              <button className="btn btn-secondary wallet-button" aria-label="Connected wallet address" disabled>
+                {walletButtonLabel}
               </button>
             ) : (
-              <button className="btn btn-primary" onClick={connectWallet} aria-label="Connect wallet">
-                Connect wallet
+              <button
+                className="btn btn-primary wallet-button"
+                onClick={connectWallet}
+                aria-label="Connect wallet"
+                disabled={isConnecting}
+              >
+                {walletButtonLabel}
               </button>
             )}
           </div>
@@ -818,8 +962,12 @@ function App() {
               transaction history backed by Ethereum and Google Cloud services.
             </p>
             <div className="hero-actions">
-              <button className="btn btn-primary" onClick={connectWallet}>
-                {account ? 'Wallet connected' : 'Connect wallet'}
+              <button
+                className={`btn ${account ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={account ? undefined : connectWallet}
+                disabled={Boolean(account) || isConnecting}
+              >
+                {walletButtonLabel}
               </button>
               {isGoogleConfigured && (
                 <button className="btn btn-secondary" onClick={connectGoogleAccount}>
@@ -873,8 +1021,8 @@ function App() {
             </div>
             <div className="checkout-copy">
               <p>
-                Product checkout uses MetaMask approval, so it works without deploying a new Sepolia contract or
-                needing test ETH. Select a product below and approve the wallet request.
+                Checkout verifies your Sepolia balance before MetaMask approval. If your wallet is short,
+                the app will show a clear warning before any signature request.
               </p>
             </div>
           </section>
