@@ -839,35 +839,41 @@ function App() {
     const isSigned = signedOrders.some((order) => (
       order.productId === product.id && order.account?.toLowerCase?.() === account?.toLowerCase?.()
     ));
+    const rating = parseFloat(meta.rating);
+    const stars = '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating));
 
     return (
       <article key={product.id} className="product-card">
         <div className="product-media">
           <img src={getImageForProduct(product.name)} alt={product.name} loading="lazy" />
-          <span className="product-badge">{isOnChain ? 'On-chain' : category}</span>
+          <span className={`product-badge${isOnChain ? ' on-chain' : ''}`}>
+            {isOnChain ? '⛓ On-chain' : category}
+          </span>
         </div>
         <div className="product-body">
           <div className="product-kicker">
             <span>{category}</span>
-            <span>{meta.rating} rating</span>
+            <span className="rating" title={`${meta.rating} / 5`}>{stars} {meta.rating}</span>
           </div>
           <h3>{product.name}</h3>
           <div className="seller-line">
             <span>Seller</span>
             <strong>{shortAddress(product.owner)}</strong>
           </div>
-          <div className="product-meta">
-            <span>{meta.condition}</span>
-            <span>{meta.delivery}</span>
+          <div className="product-tags">
+            <span className="product-tag">{meta.condition}</span>
+            <span className="product-tag">{meta.delivery}</span>
           </div>
         </div>
         <div className="product-footer">
-          <div>
+          <div className="price-block">
             <span className="price-label">Price</span>
-            <strong className="product-price">{product.price} ETH</strong>
+            <span className="product-price">
+              <span className="eth-symbol">Ξ</span> {product.price}
+            </span>
           </div>
           {product.sold ? (
-            <span className="sold-pill">Sold</span>
+            <span className="sold-pill">✓ Sold</span>
           ) : (
             <button
               className="btn btn-primary"
@@ -878,18 +884,10 @@ function App() {
                   signHostedOrder(product);
                 }
               }}
-              disabled={
-                isBuying === product.id
-                || isOwner
-                || isSigned
-              }
+              disabled={isBuying === product.id || isOwner || isSigned}
               aria-label={`Buy ${product.name}`}
             >
-              {isBuying === product.id
-                ? 'Processing'
-                : isSigned
-                  ? 'Purchased'
-                  : 'Buy'}
+              {isBuying === product.id ? '⏳ Processing…' : isSigned ? '✓ Purchased' : 'Buy Now'}
             </button>
           )}
         </div>
@@ -914,7 +912,7 @@ function App() {
             <input
               id="catalogSearch"
               type="search"
-              placeholder="Search products"
+              placeholder="Search products…"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
@@ -931,7 +929,7 @@ function App() {
             )}
             {account && walletBalanceEth && (
               <span className="status-chip balance-chip">
-                {walletBalanceEth} {walletNetwork.chainName} ETH
+                Ξ {walletBalanceEth} {walletNetwork.chainName}
               </span>
             )}
             {account ? (
@@ -977,120 +975,128 @@ function App() {
             </div>
           </div>
           <div className="market-summary" aria-label="Marketplace summary">
-            <div>
-              <span>Active listings</span>
-              <strong>{activeCount}</strong>
+            <div className="market-stat">
+              <span className="market-stat-label">Active listings</span>
+              <span className="market-stat-value brand">{activeCount}</span>
             </div>
-            <div>
-              <span>Catalog value</span>
-              <strong>{totalValue} ETH</strong>
+            <div className="market-stat">
+              <span className="market-stat-label">Catalog value</span>
+              <span className="market-stat-value">Ξ {totalValue}</span>
             </div>
-            <div>
-              <span>{shouldUseOnChain ? 'Contract' : 'Mode'}</span>
-              <strong>{shouldUseOnChain ? shortAddress(activeContractAddress) : account ? 'Wallet checkout' : 'Hosted catalog'}</strong>
+            <div className="market-stat">
+              <span className="market-stat-label">{shouldUseOnChain ? 'Contract' : 'Mode'}</span>
+              <span className="market-stat-value" style={{fontSize:'1rem',lineHeight:1.4}}>
+                {shouldUseOnChain ? shortAddress(activeContractAddress) : account ? 'Wallet checkout' : 'Hosted catalog'}
+              </span>
             </div>
           </div>
         </section>
 
         {notice && (
           <div className="alert-info" role="status">
-            <strong>Wallet status</strong>
+            <strong>ℹ</strong>
             <span>{notice}</span>
           </div>
         )}
 
         {error && (
           <div className="alert-error" role="alert">
-            <strong>Connection notice</strong>
+            <strong>⚠</strong>
             <span>{error}</span>
             {activeContractAddress ? (
-              <button type="button" className="btn btn-secondary alert-button" onClick={resetOnChainMode}>
+              <button type="button" className="btn btn-danger alert-button" onClick={resetOnChainMode}>
                 Reset contract
               </button>
             ) : (
-              <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Get MetaMask</a>
+              <a className="btn btn-secondary alert-button" href="https://metamask.io/download/" target="_blank" rel="noreferrer">Get MetaMask</a>
             )}
           </div>
         )}
 
         {account && !shouldUseOnChain && (
-          <section className="seller-panel checkout-panel">
-            <div>
-              <span className="eyebrow">Wallet checkout</span>
-              <h2>Ready to buy</h2>
+          <div className="glass-panel">
+            <div className="panel-inner seller-panel">
+              <div>
+                <span className="eyebrow">Wallet checkout</span>
+                <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'1.6rem',fontWeight:700,marginTop:6}}>Ready to buy</h2>
+              </div>
+              <div className="checkout-copy">
+                <p>
+                  Checkout verifies your {walletNetwork.chainName} balance before MetaMask approval.
+                  If your wallet is short, the app will show a clear warning before any signature request.
+                </p>
+              </div>
             </div>
-            <div className="checkout-copy">
-              <p>
-                Checkout verifies your Sepolia balance before MetaMask approval. If your wallet is short,
-                the app will show a clear warning before any signature request.
-              </p>
-            </div>
-          </section>
+          </div>
         )}
 
         {account && !shouldUseOnChain && walletOrders.length > 0 && (
-          <section className="receipt-panel" aria-label="Purchase receipts">
-            <div className="section-header compact">
-              <div>
+          <div className="glass-panel" aria-label="Purchase receipts">
+            <div className="panel-inner">
+              <div style={{marginBottom:20}}>
                 <span className="eyebrow">After wallet approval</span>
-                <h2>Purchase receipts</h2>
+                <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'1.5rem',fontWeight:700,marginTop:6}}>Purchase receipts</h2>
+              </div>
+              <div className="receipt-list">
+                {walletOrders.map((order) => (
+                  <article className="receipt-item" key={order.id || `${order.account}-${order.productId}`}>
+                    <div className="receipt-item-info">
+                      <strong>{order.productName || order.productId}</strong>
+                      <span>{shortAddress(order.buyer || order.account)} · Ξ {order.priceEth}</span>
+                    </div>
+                    <span className={`receipt-status ${order.syncStatus || 'saved'}`}>
+                      {getOrderStatusLabel(order)}
+                    </span>
+                  </article>
+                ))}
               </div>
             </div>
-            <div className="receipt-list">
-              {walletOrders.map((order) => (
-                <article className="receipt-item" key={order.id || `${order.account}-${order.productId}`}>
-                  <div>
-                    <strong>{order.productName || order.productId}</strong>
-                    <span>{shortAddress(order.buyer || order.account)} - {order.priceEth} ETH</span>
-                  </div>
-                  <span className={`receipt-status ${order.syncStatus || 'saved'}`}>
-                    {getOrderStatusLabel(order)}
-                  </span>
-                </article>
-              ))}
-            </div>
-          </section>
+          </div>
         )}
 
         {account && shouldUseOnChain && (
-          <section className="seller-panel">
-            <div>
-              <span className="eyebrow">Seller tools</span>
-              <h2>Create a listing</h2>
+          <div className="glass-panel">
+            <div className="panel-inner">
+              <div className="seller-panel" style={{display:'grid',gridTemplateColumns:'200px 1fr',gap:24,alignItems:'center'}}>
+                <div>
+                  <span className="eyebrow">Seller tools</span>
+                  <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'1.6rem',fontWeight:700,marginTop:6}}>Create a listing</h2>
+                </div>
+                <form onSubmit={addProduct} className="listing-form">
+                  <div className="field-group">
+                    <label htmlFor="productName">Product name</label>
+                    <input
+                      id="productName"
+                      type="text"
+                      placeholder="Vintage Typewriter"
+                      value={productName}
+                      onChange={(event) => setProductName(event.target.value)}
+                      disabled={isAdding}
+                      maxLength="80"
+                      required
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label htmlFor="productPrice">Price in ETH</label>
+                    <input
+                      id="productPrice"
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      placeholder="0.05"
+                      value={productPrice}
+                      onChange={(event) => setProductPrice(event.target.value)}
+                      disabled={isAdding}
+                      required
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary" disabled={isAdding || !productName || !productPrice}>
+                    {isAdding ? '⏳ Publishing…' : 'Post listing'}
+                  </button>
+                </form>
+              </div>
             </div>
-            <form onSubmit={addProduct} className="listing-form">
-              <label htmlFor="productName">
-                Product name
-                <input
-                  id="productName"
-                  type="text"
-                  placeholder="Vintage Typewriter"
-                  value={productName}
-                  onChange={(event) => setProductName(event.target.value)}
-                  disabled={isAdding}
-                  maxLength="80"
-                  required
-                />
-              </label>
-              <label htmlFor="productPrice">
-                Price in ETH
-                <input
-                  id="productPrice"
-                  type="number"
-                  step="0.001"
-                  min="0.001"
-                  placeholder="0.05"
-                  value={productPrice}
-                  onChange={(event) => setProductPrice(event.target.value)}
-                  disabled={isAdding}
-                  required
-                />
-              </label>
-              <button type="submit" className="btn btn-primary" disabled={isAdding || !productName || !productPrice}>
-                {isAdding ? 'Publishing' : 'Post listing'}
-              </button>
-            </form>
-          </section>
+          </div>
         )}
 
         <section className="catalog-section">
@@ -1116,7 +1122,7 @@ function App() {
           {loading && account && shouldUseOnChain ? (
             <div className="loader" aria-live="polite">
               <span className="spinner"></span>
-              Syncing listings
+              Syncing on-chain listings…
             </div>
           ) : visibleProducts.length > 0 ? (
             <div className="product-grid">
@@ -1124,16 +1130,21 @@ function App() {
             </div>
           ) : (
             <div className="empty-state">
+              <div className="empty-icon">🔍</div>
               <strong>No listings found</strong>
-              <span>Try another search or category.</span>
+              <span>Try another search or category filter.</span>
             </div>
           )}
         </section>
       </main>
 
       <footer>
-        <span>BlockMart marketplace</span>
-        <span>Built by Saurabh Kumar</span>
+        <span className="footer-brand">BlockMart</span>
+        <div className="footer-links">
+          <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">MetaMask</a>
+          <a href="https://sepolia.etherscan.io/" target="_blank" rel="noreferrer">Etherscan</a>
+          <span>Built by Saurabh Kumar</span>
+        </div>
       </footer>
     </div>
   );
